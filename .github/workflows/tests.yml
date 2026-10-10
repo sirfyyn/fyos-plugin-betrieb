@@ -1,0 +1,86 @@
+# Prüfen bei jedem Push und jedem Pull Request: Sauberkeit und Geheimnis-Scan, dazu die Tests gegen den Hub.
+# Installiert wird mit uv statt pip. Die Version von uv ist fest und dieselbe wie in den anderen FYOS-Repos.
+# Hub (fyos-hub) und Installer (fyos-installer) liest der Lauf aus dem Quellbaum von fyos-os: Die Action dort gibt den Pfad
+# zurück. Das braucht kein Geheimnis. Wer das Muster abwandelt, kann die beiden Schritte durch `uv pip install fyos-hub`
+# ersetzen.
+# Keine Geheimnisse nötig, das Laufzeit-Token darf nur lesen. Die Actions sind auf einen Commit festgenagelt, die Version
+# steht im Kommentar dahinter.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pruefen:
+    name: Tests gegen den Hub
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Quellbaum von fyos-os
+        id: os
+        uses: sirfyyn/fyos-os/.github/actions/quellbaum@main # sauber: ok (Verweis auf das Hauptrepo)
+      - name: Umgebung und uv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q uv==0.12.8
+      - name: Hub, Installer und Plugin installieren
+        env:
+          OS_WURZEL: ${{ steps.os.outputs.wurzel }}
+        run: |
+          uv="$RUNNER_TEMP/venv/bin/uv"
+          py="$RUNNER_TEMP/venv/bin/python"
+          "$uv" pip install -q --python "$py" "$OS_WURZEL/hub" "$OS_WURZEL/installer"
+          "$uv" pip install -q --python "$py" -e ".[test]"
+      - name: Tests
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q
+
+  geheimnisse:
+    name: Geheimnisse und Sauberkeit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      # gitleaks als offizielles Release-Binary in fester Version. Die Prüfsumme ist die Zeile linux_x64 aus
+      # gitleaks_8.30.1_checksums.txt desselben Release; passt sie nicht, bricht der Lauf ab.
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # ganze Historie für den zweiten gitleaks-Lauf
+          persist-credentials: false
+      - name: Sauberkeit (keine privaten Adressen, Konten, Geheimnisse)
+        run: python3 tools/sauber.py .
+      - name: Sauberkeit der Historie (Autoren, Adressen, Commit-Texte)
+        run: python3 tools/sauber.py --historie .
+      - name: gitleaks laden und prüfen
+        run: |
+          archiv="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/$archiv" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archiv"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archiv" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archiv" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+      - name: gitleaks über den ganzen Baum
+        run: gitleaks dir . --no-banner --redact --verbose
+      - name: gitleaks über die Historie
+        run: gitleaks git . --no-banner --redact --verbose

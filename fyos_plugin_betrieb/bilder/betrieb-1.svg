@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="t d">
+<title id="t">Skizze: Betrieb</title>
+<desc id="d">Ein Fenster Steuerpult mit drei Knoten und einer Ampel, daneben die Hinweise auf Lagebild, Git, Pipelines und Speicher.</desc>
+<style>
+.bg{fill:#f4f1ea}.fl{fill:#fffdf8}.bar{fill:#e6e0d3}.ink{fill:#2b2a27}.mut{fill:#8b8578}.acc{fill:#3f7d6e}.wrm{fill:#c9824a}
+.ln{fill:none;stroke:#2b2a27;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.dsh{stroke-dasharray:6 5;opacity:.45}
+text{font-family:ui-rounded,system-ui,-apple-system,sans-serif;font-size:14px}
+@media (prefers-color-scheme:dark){.bg{fill:#1d1c1a}.fl{fill:#2a2926}.bar{fill:#3a3833}.ink{fill:#ece7dc}.mut{fill:#8f897c}.acc{fill:#5fb3a0}.wrm{fill:#e0a06b}.ln{stroke:#ece7dc}}
+</style>
+<rect class="bg" width="640" height="400" rx="14"/>
+<rect class="ln dsh" x="6" y="6" width="628" height="388" rx="10"/>
+<rect class="fl" x="50" y="50" width="360" height="270" rx="10"/>
+<rect class="ln" x="50" y="50" width="360" height="270" rx="10"/>
+<rect class="bar" x="51" y="51" width="358" height="28" rx="9"/>
+<text class="ink" x="196" y="70">Steuerpult</text>
+<rect class="bar" x="72" y="98" width="316" height="44" rx="8"/>
+<circle class="acc" cx="96" cy="120" r="8"/>
+<text class="ink" x="116" y="125">knoten-1</text>
+<text class="mut" x="300" y="125">bereit</text>
+<rect class="bar" x="72" y="152" width="316" height="44" rx="8"/>
+<circle class="acc" cx="96" cy="174" r="8"/>
+<text class="ink" x="116" y="179">knoten-2</text>
+<text class="mut" x="300" y="179">bereit</text>
+<rect class="bar" x="72" y="206" width="316" height="44" rx="8"/>
+<circle class="wrm" cx="96" cy="228" r="8"/>
+<text class="ink" x="116" y="233">knoten-3</text>
+<text class="mut" x="290" y="233">Hinweis</text>
+<rect class="acc" x="72" y="266" width="120" height="32" rx="8"/>
+<text class="fl" x="92" y="287" font-weight="700">Neustart</text>
+<path class="ln" d="M430 185h40"/><path class="ln" d="M462 178l8 7-8 7"/>
+<rect class="wrm" x="480" y="100" width="130" height="170" rx="10"/>
+<text class="fl" x="506" y="136" font-weight="700">Betrieb</text>
+<text class="fl" x="496" y="164">Lagebild</text>
+<text class="fl" x="496" y="186">Git, Pipelines</text>
+<text class="fl" x="496" y="208">Kubernetes</text>
+<text class="fl" x="496" y="230">TrueNAS, Netz</text>
+<text class="mut" x="50" y="358">Den Cluster prüfen und gezielt eingreifen</text>
+<text class="mut" x="566" y="388" font-size="12">Skizze</text>
+</svg>

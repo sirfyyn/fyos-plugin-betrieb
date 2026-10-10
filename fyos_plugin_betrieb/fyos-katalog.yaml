@@ -1,0 +1,192 @@
+# Katalogeintrag dieses Plugin-Pakets für den FYOS-Installer (Schema: fyos-os/installer/fyos_installer/katalog.py).
+# Der Installer findet die Datei über den Entry-Point `fyos.katalog` (pyproject.toml). Die Bilder liegen
+# daneben unter bilder/ (Dateiname <id>-<n>.svg|png|jpg|webp, hier nur der Name in `bilder`).
+version: 1
+bausteine:
+  - id: betrieb
+    titel: Betrieb
+    kurz: Lagebild, Cluster-Steuerpult, Repos, Kubernetes, Git, Pipelines und Speicher an einem Ort.
+    was_daraus_wird: |
+      Im Desktop erscheint das Steuerpult: Knoten, Workloads und Rollouts deines Kubernetes-Clusters, dazu Logs und
+      gezielte Eingriffe wie ein Neustart. Der Agent bekommt dieselben Werkzeuge.
+      Die App „Repos“ zeigt alle Repositories deines Git-Servers: Standardzweig, letzter Commit, CI-Ampel, offene
+      Pull-Requests, Paket- und Bildversion, im Detail Zweige, Commits und CI-Läufe.
+      Dazu kommt das Lagebild: eine Ampel (grün bis rot) mit Begründung, Kennzahlen aus Prometheus, Fristen
+      (Zertifikat, Plattenplatz, Backups) und eine Chronik aus Commits, Pipelines und Vorfällen.
+      Weitere Werkzeuge reichen an Git-Server, Pipelines, TrueNAS, das Omada-Netz und Repomix.
+      Schreibende Eingriffe lassen sich vorher als Trockenlauf ansehen.
+      Auf Wunsch kommt der Betriebsgraph dazu: eine Postgres-Datenbank, die ein Einspeiser aus Cluster, Flux, Caddy, Hub,
+      eigenen Rechnern und offenen Vorgängen füllt. Der Agent fragt sie, was an einem Dienst hängt, was bei seinem Ausfall
+      mitfällt, wie zwei Dinge zusammenhängen und was sich geändert hat.
+      Dieses Paket ist die Grundlage der weiteren Plugin-Pakete.
+    bilder: [betrieb-1.svg]
+    art: plugin
+    pflicht: false
+    abhaengig_von: [kern]
+    voraussetzungen:
+      - Ein Kubernetes-Cluster, den der Hub erreicht (im Cluster oder per kubeconfig)
+      - Ein Git-Server mit API (Gitea) für Chronik, Pipelines und Arbeit
+      - Optional für den Betriebsgraphen ein Postgres, in dem eine Datenbank und zwei Rollen angelegt werden dürfen (README, Abschnitt „Betriebsgraph einrichten“)
+    quelle: { paket: fyos-plugin-betrieb, repo: fyos-plugin-betrieb }
+    konfiguration:
+      - name: gitea_api
+        titel: Adresse der Git-API
+        typ: text
+        beschreibung: Basisadresse der Gitea-API (mit /api/v1), z. B. https://git.example.org/api/v1; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: GITEA_API_BASE
+      - name: gitea_repo
+        titel: Hauptrepository
+        typ: text
+        beschreibung: Besitzer/Name des Repositorys, dessen Commits und Pipelines das Lagebild zeigt
+        standard: ""
+        pflicht: false
+        umgebung: GITEA_REPO
+      - name: gitea_token
+        titel: Git-Token
+        typ: geheim
+        beschreibung: Zugriffstoken für die Git-API (lesen; für Arbeit auch Pipelines anstoßen)
+        standard: ""
+        pflicht: false
+        umgebung: GITEA_TOKEN
+      - name: repos_besitzer
+        titel: Besitzer der Repos
+        typ: text
+        beschreibung: Konto oder Organisation, deren Repositories die App „Repos“ zeigt (leer = Besitzer des Hauptrepositorys)
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_REPOS_BESITZER
+      - name: gitea_paket_token
+        titel: Paket-Token
+        typ: geheim
+        beschreibung: Token mit read:package für die Paket- und Bildversionen in „Repos“ (leer = Git-Token)
+        standard: ""
+        pflicht: false
+        umgebung: GITEA_PAKET_TOKEN
+      - name: prometheus
+        titel: Prometheus
+        typ: text
+        beschreibung: Adresse von Prometheus für Kennzahlen im Lagebild; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: PROMETHEUS_URL
+      - name: repo_pfad
+        titel: Repository-Klon
+        typ: text
+        beschreibung: Pfad des Klons, aus dem Skripte (z. B. Fenster setzen) laufen; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_REPO_PATH
+      - name: graph_db_url
+        titel: Adresse der Graph-Datenbank
+        typ: geheim
+        beschreibung: Postgres-Adresse des Betriebsgraphen mit dem lesenden Konto (postgresql://…); leer = kein Betriebsgraph eingerichtet, das Plugin graph meldet sich dann als aus
+        standard: ""
+        pflicht: false
+        umgebung: GRAPH_DB_URL
+      - name: redis_url
+        titel: Redis
+        typ: geheim
+        beschreibung: Adresse von Redis (Anwesenheit, Fenster, Ereignisse), z. B. redis://redis.example.org:6379; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: REDIS_URL
+      - name: agent_url
+        titel: Adresse des Agenten
+        typ: text
+        beschreibung: Adresse des Agenten-Dienstes mit der Schnittstelle /nexus/* (Anwesenheit, Chronik), nicht das OpenClaw-Gateway; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_AGENTDIENST_URL
+      - name: agent_token
+        titel: Token des Agenten
+        typ: geheim
+        beschreibung: API-Token des Agenten-Dienstes (Bearer), nicht das Gateway-Token
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_AGENTDIENST_TOKEN
+      - name: aufgaben_url
+        titel: Adresse des Aufgaben-Dienstes
+        typ: text
+        beschreibung: Adresse des Dienstes für Aufgaben und Pipelines; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_AUFGABEN_URL
+      - name: einsichten_url
+        titel: Adresse des Einsichten-Dienstes
+        typ: text
+        beschreibung: Adresse des Dienstes für Einsichten (Suche in der Chronik); leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_EINSICHTEN_URL
+      - name: pane_auth
+        titel: Kopfzeilenwert der internen Dienste
+        typ: geheim
+        beschreibung: Wert der Kopfzeile X-FYOS-Pane-Auth, mit der die internen Dienste angesprochen werden; leer = ohne Kopfzeile
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_PANE_AUTH
+      - name: fenster_knoten
+        titel: Knoten mit Messfenster
+        typ: text
+        beschreibung: Kommagetrennte Knotennamen, für die ein Dev/Test-Fenster gesetzt werden kann (leer = nicht eingerichtet, Fenster lassen sich dann nicht setzen; siehe README)
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_FENSTER_KNOTEN
+      - name: messknoten
+        titel: Messknoten
+        typ: text
+        beschreibung: Knoten, auf dem Messungen laufen; CronJobs, die gegen ihn arbeiten, sperrt das Steuerpult im Fenster; leer = keiner
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_CLUSTER_MESSKNOTEN
+      - name: nie_absperren
+        titel: Nie absperren
+        typ: text
+        beschreibung: Kommagetrennte Knoten, die das Steuerpult nie absperrt (Steuerebene ist immer geschützt)
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_CLUSTER_NIE_ABSPERREN
+      - name: prozesskarte_lanes
+        titel: Prozesskarte
+        typ: text
+        beschreibung: Pfad der Datei mit den Ketten der Prozesskarte (leer = die Vorlage prozesskarte-lanes.beispiel.yaml)
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_PROZESSKARTE_LANES
+      - name: arbeit_workflow
+        titel: Test-Workflow der Arbeitsschleife
+        typ: text
+        beschreibung: Dateiname des Workflows, dessen rote Tests die Arbeitsschleife aufgreift (z. B. tests.yml); leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_ARBEIT_WORKFLOW
+      - name: arbeit_bild
+        titel: Bild des Prüf-Jobs
+        typ: text
+        beschreibung: Container-Bild mit git und pytest für den Prüf-Job der Arbeitsschleife; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_ARBEIT_BILD
+      - name: fle_daten
+        titel: Verzeichnis der Messläufe
+        typ: text
+        beschreibung: Verzeichnis mit dem Unterordner messungen/ (eine JSON-Datei je Messlauf); leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_FLE_DATEN
+      - name: omada_url
+        titel: Adresse des mcp-omada
+        typ: text
+        beschreibung: Adresse des Omada-Dienstes; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_OMADA_URL
+      - name: truenas_url
+        titel: Adresse des mcp-truenas
+        typ: text
+        beschreibung: Adresse des Speicher-Dienstes; leer = nicht eingerichtet
+        standard: ""
+        pflicht: false
+        umgebung: FYOS_TRUENAS_URL

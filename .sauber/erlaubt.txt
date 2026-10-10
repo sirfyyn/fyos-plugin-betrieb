@@ -1,0 +1,4 @@
+# Pfad-Präfixe, die tools/sauber.py überspringt (eine Zeile je Präfix, Kommentare nur in eigenen Zeilen).
+# Die Urheberzeile der Lizenz nennt ein Konto, das sonst als verboten gilt. NOTICE hat ein festes Format und lässt
+# sich nicht mit dem Kommentar "sauber: ok" versehen; deshalb gilt die Ausnahme für die ganze Datei.
+NOTICE

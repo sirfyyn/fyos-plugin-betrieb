@@ -1,0 +1,62 @@
+# Beispiel für die Einträge, die eine Installation für die Plugins dieses Pakets in der Hub-Konfiguration setzt. Ein
+# Eintrag ist nur nötig für Konfiguration, Geheimnisse oder `enabled: false`; das installierte Paket lädt die Plugins sonst
+# von selbst über den Entry-Point. Die Adressen unten sind Platzhalter (example.org): ohne eigene Adresse ist das jeweilige
+# Plugin „nicht eingerichtet“ und sagt, was zu setzen ist. Geheimnisse stehen nie hier, nur ihr Name.
+plugins:
+  - name: k8s
+  - name: cluster
+    config:
+      repo: /pfad/zum/repo-klon # oder FYOS_REPO_PATH
+  - name: lage
+  - name: betrieb
+  - name: arbeit
+  - name: grow
+  - name: pipelines
+  - name: git
+    config:
+      repo_path: /pfad/zum/repo-klon # oder FYOS_REPO_PATH
+      remotes: [origin]
+  - name: truenas
+    config:
+      server_url: http://truenas-mcp.example.org:8012 # oder FYOS_TRUENAS_URL
+  - name: omada
+    config:
+      server_url: http://omada-mcp.example.org:8011 # oder FYOS_OMADA_URL
+      timeout_sec: 45
+  - name: kerberuz
+    config:
+      server_url: http://kerberuz-mcp.example.org:8020 # oder FYOS_KERBERUZ_URL
+  - name: cli_anything
+    config:
+      binary: cli-hub
+      install_dir: ~/.cli-anything
+      list_timeout_sec: 15
+      install_timeout_sec: 300
+      launch_timeout_sec: 600
+  - name: repomix
+    config:
+      binary: repomix
+      pack_timeout_sec: 120
+      estimate_timeout_sec: 60
+  - name: fle
+    config:
+      daten: /pfad/zu/den/messlaeufen # oder FYOS_FLE_DATEN
+  - name: repos
+    config:
+      besitzer: beispiel # Konto oder Organisation im Git-Server; oder FYOS_REPOS_BESITZER
+      # PyPI-Pakete, deren Name nicht der des Repos ist (ergänzt die Vorgabe fyos-hub/fyos-installer → fyos-os)
+      pakete: {}
+  # Betriebsgraph (Postgres). Der Eintrag ist nur nötig für Konfiguration oder `enabled: false`; ohne GRAPH_DB_URL
+  # meldet sich das Plugin als „aus“. Einrichtung: README, Abschnitt „Betriebsgraph einrichten“.
+  - name: graph
+    config:
+      url_env: GRAPH_DB_URL # Name der Umgebungsvariable mit der Adresse (Vorgabe)
+      anweisung_s: 20 # Frist je Abfrage in Sekunden (Vorgabe)
+
+# Umgebung des Hubs (Namen der Geheimnisse; die Werte liegen im Secret-Speicher, nie im Repo):
+#   GITEA_TOKEN     Zugriff auf die Git-API (lage, betrieb, arbeit, repos)
+#   GITEA_PAKET_TOKEN  Paketversionen in repos (read:package; ohne ihn GITEA_TOKEN)
+#   FYOS_AGENTDIENST_TOKEN  Bearer für den Agenten-Dienst (lage.dienst; nicht FYOS_AGENT_TOKEN, das ist das Token des
+#                   OpenClaw-Gateways)
+#   FYOS_PANE_AUTH  Kopfzeile X-FYOS-Pane-Auth für interne Dienste
+#   GRAPH_DB_URL    Adresse der Graph-Datenbank mit dem lesenden Konto fyos_graph_lesen (graph)

@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steuerpult</title>
+<style>/*STIL*/
+  /* Einspaltige Raster dürfen schmaler werden als ihr breitester Inhalt (lange Namen, Auswahllisten, Code). */
+  .meldungen, .sperre-liste, .knoten, .messungen, .mess, .k-fakten, .k-aktionen, .codes, .detail, .detail-inhalt, .filter, .abgleich,
+  .panel, .plan-block, .panel-liste, .panel .formular, .panel .bestaetigung { grid-template-columns: minmax(0, 1fr); }
+
+  /* ── Aufbau: Lage-Satz, Reiter, vier Bereiche ─────────────────────────────── */
+  #lage-satz { margin-bottom: 14px; }
+  #lage-satz > .laedt { padding: 4px 2px; }
+  #lage-satz .satz-text > .link { display: inline-flex; min-height: 36px; padding: 0 2px; margin-top: 2px; }
+  #reiter { display: flex; width: 100%; max-width: 480px; margin-bottom: 24px; }
+  #reiter button { flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 0 12px; gap: 7px; }
+  #reiter .punkt { width: 7px; height: 7px; box-shadow: none; }
+  [data-panel] > .abschnitt + .abschnitt { margin-top: 32px; }
+  .meldungen { display: grid; gap: 8px; margin-bottom: 12px; }
+  .meldungen:empty { display: none; }
+  .meldungen > .link { justify-self: start; min-height: 36px; padding: 4px; white-space: normal; text-align: left; line-height: 1.35; }
+  .meldungen.oben { margin: 0 0 14px; }
+  .meldungen.nach-zahlen { margin-top: 14px; }
+  .ablage:empty { display: none; }
+  .ablage:not(:empty) { margin-top: 2px; }
+  .klemme { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .klemme.lang { cursor: pointer; }
+  .klemme.offen { display: block; -webkit-line-clamp: unset; }
+  .sperre { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--warn); overflow-wrap: anywhere; }
+  .sperre .ico { flex: none; margin-top: 1px; font-size: 14px; }
+  .sperre-liste { display: grid; gap: 6px; }
+  .hinweis > span { min-width: 0; }
+  .hinweis details { margin-top: 2px; }
+  .hinweis details > summary { min-height: 26px; }
+  .hinweis details p { margin: 4px 0 2px; color: var(--mut); font-size: 12.5px; }
+
+  /* ── Knotenkarten ─────────────────────────────────────────────────────────── */
+  #knoten { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+  /* Mauerwerk: die Karten sind unterschiedlich hoch. Das Skript misst sie und gibt jeder so viele schmale Zeilen,
+     wie sie braucht; die nächste Karte rückt unter die kürzere. Ohne Skript bleibt es ein gewöhnliches Raster. */
+  #knoten.mauer { grid-auto-rows: 4px; row-gap: 0; }
+  #knoten > :where(.zustand, .gruppe, .laedt) { grid-column: 1 / -1; }
+  .knoten { display: grid; gap: 16px; align-content: start; padding: 18px; container-type: inline-size; transition: border-color 0.6s, box-shadow 0.6s; }
+  .knoten.fokus { border-color: color-mix(in oklab, var(--akz) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--akz) 20%, transparent); }
+  .k-kopf { display: flex; align-items: flex-start; gap: 13px; }
+  .k-titel { min-width: 0; flex: 1 1 auto; }
+  .k-titel h3 { margin: 2px 0 0; font-size: 18px; line-height: 1.2; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+  .k-status { margin-top: 3px; font-size: 13px; line-height: 1.4; color: var(--mut); }
+  .k-status.schlecht { color: var(--schlecht); font-weight: var(--font-weight-medium); }
+  .k-marken { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .hinweis .klemme { margin-top: 2px; color: var(--mut); font-size: 12.5px; }
+  .messungen { display: grid; gap: 16px; }
+  /* Breite Karte (ein Knoten pro Zeile, z. B. im Chat): Messungen paarweise nebeneinander statt eine unter der anderen. */
+  @container (min-width: 500px) { .messungen { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; } }
+  .mess { display: grid; gap: 7px; align-content: start; }
+  .mess-kopf { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .mess-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: var(--font-weight-semibold); color: var(--mut); white-space: nowrap; }
+  .mess-name .ico { flex: none; }
+  .mess-name .ico { font-size: 15px; color: var(--leise); }
+  .mess-name .mut { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-weight-normal); color: var(--leise); }
+  .mess-wert { flex: none; margin-left: auto; font-size: 22px; line-height: 1; font-weight: var(--font-weight-semibold); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .mess-wert small { margin-left: 2px; font-size: 12px; font-weight: var(--font-weight-medium); letter-spacing: 0; color: var(--mut); }
+  .mess-wert.warn { color: var(--warn); }
+  .mess-wert.schlecht { color: var(--schlecht); }
+  .mess-wert.ohne { color: var(--leise); }
+  .mess-unter { display: flex; flex-wrap: wrap; gap: 1px 14px; font-size: 12.5px; line-height: 1.5; color: var(--mut); font-variant-numeric: tabular-nums; }
+  .mess-spur { display: block; width: 100%; height: 16px; margin-top: -2px; color: var(--leise); }
+  .mess-spur.warn { color: var(--warn); }
+  .mess-spur.schlecht { color: var(--schlecht); }
+  .mess-spur .flaeche { fill: color-mix(in oklab, currentColor 14%, transparent); stroke: none; }
+  .mess-spur .linie { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .mess .balken > b { position: absolute; top: 0; bottom: 0; left: var(--ang); width: 2px; margin-left: -1px; border-radius: 1px; background: var(--fg); opacity: 0.8; }
+  .ang { cursor: help; }
+  .tick { display: inline-block; width: 2px; height: 11px; margin-right: 6px; border-radius: 1px; background: var(--fg); opacity: 0.8; vertical-align: -1px; }
+  .k-fakten { display: grid; gap: 2px; font-size: 12.5px; line-height: 1.5; color: var(--mut); }
+  .k-aktionen { display: grid; gap: 10px; }
+  .k-konfig > details > summary { color: var(--mut); }
+  .k-konfig dl.kv { margin: 8px 0 4px; }
+  .k-konfig dl.kv dd > .marke + .marke { margin-left: 4px; }
+  .codes { display: grid; gap: 3px; margin-top: 6px; max-height: 220px; overflow: auto; font-size: 12px; }
+  .codes code { display: block; width: fit-content; max-width: 100%; }
+  .pods { list-style: none; margin: 6px 0 0; padding: 0; max-height: 280px; overflow: auto; }
+  .pods li { display: flex; align-items: baseline; gap: 8px; padding: 5px 2px; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .pods li:first-child { border-top: 0; }
+  .pods .punkt { align-self: center; }
+  .pods .pod-name { min-width: 0; overflow-wrap: anywhere; }
+
+  /* ── Zeilenblöcke: Zeile, aufklappbares Detail, Platz für Aktions-Panels ─────── */
+  .gruppe > .blk + .blk { border-top: 1px solid var(--line); }
+  .blk > .zeile { width: 100%; }
+  .detail { display: grid; gap: 12px; padding: 2px 16px 16px 60px; }
+  .detail-inhalt { display: grid; gap: 12px; }
+  .detail-inhalt:empty { display: none; }
+  .detail dl.kv { margin: 0; }
+  .blk > .ablage:not(:empty) { padding: 0 14px 14px; }
+  .bereit { font-weight: var(--font-weight-semibold); color: var(--fg); }
+  .bereit.warn { color: var(--warn); }
+  .bereit.schlecht { color: var(--schlecht); }
+  .bereit.aus { font-weight: var(--font-weight-normal); color: var(--leise); }
+  .grp-kopf { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; font-size: 13px; font-weight: var(--font-weight-semibold); color: var(--mut); }
+  .grp-kopf .mut { font-weight: var(--font-weight-normal); color: var(--leise); }
+  .grp + .grp { margin-top: 20px; }
+  .grp.nach-zahlen { margin-top: 22px; }
+  .filter { display: grid; gap: 10px; margin-bottom: 12px; }
+  .filter .leiste > select { max-width: 100%; }
+  .mehr-knopf { display: flex; justify-content: center; margin-top: 12px; }
+  .kennzahlen.breit { grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr)); }
+  /* Gleich hohe Karten: bricht eine Beschriftung um, bleiben die Zahlen trotzdem auf einer Linie (Zahl und Unterzeile rücken nach unten). */
+  .kennzahlen.gleich > .kennzahl > .zahl-gross { margin-top: auto; }
+  .kennzahl .zahl-gross { font-size: 30px; }
+  .karte > .kopfzeile { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .kopfzeile .zeile-titel { font-size: 15px; }
+  .abgleich { display: grid; gap: 12px; }
+  .abgleich p { margin: 0; }
+  .abgleich .leiste > select { flex: 1 1 220px; }
+  .rauschen { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 12.5px; color: var(--leise); }
+  .rauschen .ico { margin-top: 2px; }
+  .zahl-fett { color: var(--fg); font-weight: var(--font-weight-semibold); }
+  details.skript { margin-top: 10px; }
+
+  /* ── Aktions-Panels: Trockenlauf, Ausführen, Logs, Räumen-Probe ──────────────── */
+  .panel { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--color-border-info); border-radius: var(--r-m); background: var(--color-background-info); }
+  .panel.fertig { border-color: var(--color-border-success); background: var(--color-background-success); }
+  .panel.neutral { border-color: var(--line-2); background: var(--flaeche); }
+  .plan-block { display: grid; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+  .panel-kopf { display: flex; align-items: center; gap: 11px; }
+  .panel-titel { display: grid; min-width: 0; flex: 1 1 auto; line-height: 1.35; }
+  .panel-titel b { font-size: 14px; font-weight: var(--font-weight-semibold); }
+  .panel-titel span { font-size: 12.5px; color: var(--mut); overflow-wrap: anywhere; }
+  .panel-plan { font-size: 14px; font-weight: var(--font-weight-medium); line-height: 1.5; overflow-wrap: anywhere; }
+  .panel-liste { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .panel-liste li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--mut); overflow-wrap: anywhere; }
+  .panel-liste .ico { flex: none; margin-top: 2px; font-size: 14px; color: var(--akz); }
+  .panel .formular { display: grid; gap: 12px; }
+  .panel .bestaetigung { display: grid; gap: 4px; }
+  .panel .bestaetigung .wahl { align-items: flex-start; height: auto; padding: 4px 0; line-height: 1.45; color: var(--fg); }
+  .panel .bestaetigung .wahl input { margin-top: 2px; }
+  .panel-knoepfe { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .panel .feld input { width: 100%; }
+  .panel .skalieren-zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+  .panel .skalieren-zeile .feld { width: 130px; }
+  .panel .leiste select { flex: 1 1 150px; }
+  .panel pre { max-height: 320px; margin: 0; font-size: 12px; }
+  .zaehler { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .zaehler > div { padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-m); background: var(--flaeche); }
+  .zaehler b { display: block; font-size: 22px; line-height: 1.1; font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; }
+  .zaehler span { font-size: 12px; color: var(--mut); }
+  .zaehler .schlecht b { color: var(--schlecht); }
+  .zaehler .akz b { color: var(--akz); }
+  .panel .tabliste { max-height: 300px; overflow: auto; margin-top: 6px; }
+  /* In FYOS wächst das Fenster mit, nur die Fläche scrollt (_stil.css Abschnitt 13); Logs (pre) bleiben ein Kasten */
+  html[data-host="fyos"][data-rahmen="frei"] :is(.codes, .pods, .panel .tabliste) { max-height: none; }
+  .panel .tabliste .zeile { min-height: 46px; padding: 8px 10px; }
+
+  /* ── Schmal und Berührung ─────────────────────────────────────────────────── */
+  @media (max-width: 480px) {
+    #reiter { max-width: none; margin-bottom: 20px; }
+    .knoten { padding: 16px 15px; }
+    .detail { padding: 2px 12px 14px; }
+    .mess-wert { font-size: 20px; }
+    .panel { padding: 13px 13px; }
+    .zaehler b { font-size: 20px; }
+    .kennzahl .zahl-gross { font-size: 26px; }
+  }
+  @media (pointer: coarse) {
+    #reiter button { min-height: 40px; }
+    details > summary { min-height: 40px; }
+    .hinweis details > summary { min-height: 36px; }
+  }
+</style>
+</head>
+<body data-breite="voll">
+<!--KOPF-->
+  <button id="neu" class="rund drehen" title="Aktualisieren" aria-label="Aktualisieren"><svg class="ico" data-symbol="refresh-cw"></svg></button>
+<!--/KOPF-->
+<div id="lage-satz" class="satz" role="status" aria-live="polite"><span class="laedt">Lage wird geprüft …</span></div>
+<div id="reiter" class="reiter" role="tablist" aria-label="Bereiche" data-klebt>
+  <button type="button" role="tab" id="r-ueberblick" class="an" aria-selected="true" aria-controls="t-ueberblick" data-tab="ueberblick">Überblick<span class="punkt" role="img" hidden></span></button>
+  <button type="button" role="tab" id="r-workloads" aria-selected="false" aria-controls="t-workloads" data-tab="workloads" tabindex="-1">Workloads<span class="punkt" role="img" hidden></span></button>
+  <button type="button" role="tab" id="r-flux" aria-selected="false" aria-controls="t-flux" data-tab="flux" tabindex="-1">Flux<span class="punkt" role="img" hidden></span></button>
+  <button type="button" role="tab" id="r-mehr" aria-selected="false" aria-controls="t-mehr" data-tab="mehr" tabindex="-1">Ereignisse</button>
+</div>
+
+<main>
+  <!-- Überblick: Knoten und was nicht stimmt -->
+  <div id="t-ueberblick" role="tabpanel" aria-labelledby="r-ueberblick" data-panel="ueberblick">
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="server"></svg>Knoten<span id="knoten-zahl" class="anzahl"></span></h2>
+      <div id="knoten-meldungen" class="meldungen"></div>
+      <div id="knoten" class="raster"><div class="laedt gross">Knoten werden geladen …</div></div>
+    </section>
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="triangle-alert"></svg>Was nicht stimmt<span id="lage-zahl" class="anzahl"></span></h2>
+      <div id="lage"><div class="laedt gross">Wird geprüft …</div></div>
+    </section>
+  </div>
+
+  <!-- Workloads und CronJobs -->
+  <div id="t-workloads" role="tabpanel" aria-labelledby="r-workloads" data-panel="workloads" hidden>
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="boxes"></svg>Workloads<span id="wl-zahl" class="anzahl"></span><span id="wl-info" class="rechts mut"></span></h2>
+      <div class="filter">
+        <div id="wl-knoten" class="knoepfe" role="group" aria-label="Knoten"></div>
+        <div class="leiste">
+          <input id="wl-q" type="search" placeholder="Name oder Image suchen" aria-label="Workloads suchen" autocomplete="off">
+          <select id="wl-ns" aria-label="Namespace"><option value="">Alle Namespaces</option></select>
+          <label class="wahl"><input id="wl-probleme" type="checkbox"> Nur Probleme</label>
+        </div>
+      </div>
+      <div id="wl-meldungen" class="meldungen"></div>
+      <div id="workloads"><div class="gruppe"><div class="laedt gross">Workloads werden geladen …</div></div></div>
+    </section>
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="timer"></svg>CronJobs<span id="cj-zahl" class="anzahl"></span><span id="cj-info" class="rechts mut"></span></h2>
+      <div class="filter">
+        <div class="leiste">
+          <input id="cj-q" type="search" placeholder="CronJob suchen" aria-label="CronJob suchen" autocomplete="off">
+          <label class="wahl"><input id="cj-alle" type="checkbox"> Alle zeigen</label>
+        </div>
+      </div>
+      <div id="cj-meldungen" class="meldungen"></div>
+      <div id="cronjobs"><div class="gruppe"><div class="laedt gross">CronJobs werden geladen …</div></div></div>
+    </section>
+  </div>
+
+  <!-- Flux -->
+  <div id="t-flux" role="tabpanel" aria-labelledby="r-flux" data-panel="flux" hidden>
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="git-branch"></svg>Flux<span id="flux-zahl" class="anzahl"></span><span id="flux-info" class="rechts mut"></span></h2>
+      <div id="flux"><div class="laedt gross">Flux wird geprüft …</div></div>
+    </section>
+  </div>
+
+  <!-- Mehr: Ereignisse und Altlasten -->
+  <div id="t-mehr" role="tabpanel" aria-labelledby="r-mehr" data-panel="mehr" hidden>
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="activity"></svg>Ereignisse<span id="ev-zahl" class="anzahl"></span></h2>
+      <div class="filter">
+        <div class="leiste">
+          <select id="ev-std" aria-label="Zeitraum"><option value="6">Letzte 6 Stunden</option><option value="24" selected>Letzte 24 Stunden</option><option value="72">Letzte 3 Tage</option></select>
+          <label class="wahl"><input id="ev-warn" type="checkbox" checked> Nur Warnungen</label>
+          <button id="ev-laden" class="klein"><svg class="ico" data-symbol="refresh-cw"></svg>Neu laden</button>
+        </div>
+      </div>
+      <div id="ereignisse"></div>
+    </section>
+    <section class="abschnitt">
+      <h2><svg class="ico" data-symbol="archive"></svg>Altlasten</h2>
+      <div id="altlasten"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+/*BRUECKE*/
+const $ = (id) => document.getElementById(id);
+const { esc, symbol, kachel, marke, zustand, zahl, zeit, knoepfe } = App;
+const kopfsatz = App.satz;
+
+// ── Hilfen ──────────────────────────────────────────────────────────────────
+const mz = (x, eins, viele) => `${zahl(x, 0)} ${x === 1 ? eins : viele}`;
+const kuerze = (t, n) => { const s = String(t ?? "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s; };
+/** „vor 192 min“ → „vor 3 Std.“ in Texten, die der Hub fertig liefert. */
+const dauerIn = (t) => String(t ?? "").replace(/\b(vor|seit) (\d+) min\b/g, (_, w, m) => `${w} ${zeit.dauer(Number(m))}`);
+/** Kurzformen aus Kubernetes: „10m“ → „10 Min.“, „1h30m“ → „1 Std. 30 Min.“ */
+const dauerKurz = (t) => String(t ?? "").replace(/(?:\d+[hms])+(?![a-z])/g, (z) => [...z.matchAll(/(\d+)([hms])/g)].filter((p) => p[1] !== "0")
+  .map((p) => `${p[1]} ${p[2] === "h" ? "Std." : p[2] === "m" ? "Min." : "Sek."}`).join(" "));
+/** CPU-Verbrauch in Kernen; winzige Werte nicht auf „0“ runden. */
+const kerneText = (c) => { const x = Number(c) || 0; return x < 0.01 ? "weniger als 0,01 Kerne" : `${zahl(x, x < 10 ? 2 : 1)} ${x === 1 ? "Kern" : "Kerne"}`; };
+const stufe = (p, warn = 75, schlecht = 90) => p == null ? "" : p >= schlecht ? "schlecht" : p >= warn ? "warn" : "";
+/** „seit 3 Std.“, ganz frisch „seit eben“ */
+const seit = zeit.seit;
+/** Alarmnamen aus Prometheus auf Deutsch; was hier fehlt, bleibt, wie es heißt. */
+const ALARM = {
+  KubeJobFailed: "Job gescheitert", KubeJobNotCompleted: "Job läuft zu lange", PodNotReady: "Pod nicht bereit", KubePodNotReady: "Pod nicht bereit",
+  KubePodCrashLooping: "Pod stürzt immer wieder ab", KubeDeploymentReplicasMismatch: "Deployment ohne alle Replikas",
+  KubeStatefulSetReplicasMismatch: "StatefulSet ohne alle Replikas", KubeDaemonSetRolloutStuck: "DaemonSet-Rollout hängt",
+  KubeNodeNotReady: "Knoten nicht bereit", KubeNodeUnreachable: "Knoten nicht erreichbar", KubeletDown: "Kubelet nicht erreichbar",
+  CPUThrottlingHigh: "CPU stark gedrosselt", KubeCPUOvercommit: "CPU überbucht", KubeMemoryOvercommit: "Arbeitsspeicher überbucht",
+  NodeFilesystemSpaceFillingUp: "Festplatte füllt sich", NodeFilesystemAlmostOutOfSpace: "Festplatte fast voll",
+  NodeMemoryHighUtilization: "Arbeitsspeicher stark ausgelastet", TargetDown: "Messziel nicht erreichbar",
+  NetzSchnittstelleFlapptDauerhaft: "Netzschnittstelle flackert dauerhaft",
+};
+/** Pod-Problem aus der Lage: „playwright-mcp vor 192 min“ → „Container playwright-mcp · vor 3 Std.“ */
+function podDetail(roh, detail) {
+  const d = String(detail ?? ""); let m;
+  if (roh === "OOMKilled" && (m = /^(.+?) vor (\d+) min$/.exec(d))) return `Container ${m[1]} · vor ${zeit.dauer(Number(m[2]))}`;
+  if ((m = /^seit (\d+) min Pending$/.exec(d))) return `Wartet seit ${zeit.dauer(Number(m[1]))}`;
+  if ((m = /^seit (\d+) min$/.exec(d))) return `Seit ${zeit.dauer(Number(m[1]))} nicht bereit`;
+  if ((m = /^([^\s:]+): (.+)$/s.exec(d))) return `Container ${m[1]}: ${meldung(m[2])}`; // „relay: Back-off pulling image …“
+  return meldung(dauerIn(d));
+}
+/** Kubernetes- und Flux-Gründe auf Deutsch; der Originalname bleibt im Tooltip. */
+const GRUND = {
+  OOMKilled: "Speicher aufgebraucht", OOMKilling: "Speicher aufgebraucht", SystemOOM: "Systemspeicher aufgebraucht",
+  CrashLoopBackOff: "Stürzt immer wieder ab", BackOff: "Wartet nach Absturz",
+  ImagePullBackOff: "Image nicht ladbar", ErrImagePull: "Image nicht ladbar", ErrImageNeverPull: "Image nicht ladbar", InvalidImageName: "Image-Name ungültig",
+  CreateContainerConfigError: "Konfiguration fehlerhaft", CreateContainerError: "Container nicht startbar", RunContainerError: "Container nicht startbar",
+  BackoffLimitExceeded: "Zu oft gescheitert", DeadlineExceeded: "Zeitlimit überschritten", Error: "Fehler", Evicted: "Verdrängt", Completed: "Abgeschlossen", Complete: "Abgeschlossen",
+  Unknown: "Unbekannt", Failed: "Fehlgeschlagen", Pending: "Wartet", Running: "Läuft", Succeeded: "Abgeschlossen",
+  Progressing: "Wird abgeglichen", ProgressingWithRetry: "Wird erneut versucht", ReconciliationFailed: "Abgleich fehlgeschlagen",
+  ReconciliationSucceeded: "Abgeglichen", DependencyNotReady: "Wartet auf Abhängigkeit", ArtifactFailed: "Quelle nicht lesbar",
+  BuildFailed: "Bauen fehlgeschlagen", HealthCheckFailed: "Gesundheitsprüfung fehlgeschlagen", InstallFailed: "Installation fehlgeschlagen",
+  UpgradeFailed: "Aktualisierung fehlgeschlagen", Suspended: "Ausgesetzt", ReadinessFailed: "Nicht bereit", GitOperationFailed: "Git-Zugriff fehlgeschlagen",
+  PruneFailed: "Aufräumen fehlgeschlagen", ValidationFailed: "Prüfung fehlgeschlagen", InstallSucceeded: "Installiert", UpgradeSucceeded: "Aktualisiert",
+  NewArtifact: "Neuer Stand", ArtifactUpToDate: "Aktuell", DriftDetected: "Abweichung erkannt", TestFailed: "Test fehlgeschlagen",
+  Unhealthy: "Gesundheitsprüfung fehlgeschlagen", FailedScheduling: "Nicht einplanbar", FailedMount: "Volume nicht einbindbar",
+  FailedAttachVolume: "Volume nicht anhängbar", FailedCreate: "Anlegen fehlgeschlagen", FailedDelete: "Löschen fehlgeschlagen",
+  FailedGetResourceMetric: "Messwert nicht lesbar", FailedSync: "Abgleich fehlgeschlagen", NodeNotReady: "Knoten nicht bereit",
+  Killing: "Wird beendet", NetworkNotReady: "Netzwerk nicht bereit", ProbeWarning: "Prüfung meldet Warnung",
+  FailedCreatePodSandBox: "Pod-Umgebung nicht anlegbar", FailedToUpdateEndpoint: "Endpunkte nicht aktualisiert", DNSConfigForming: "DNS-Einträge gekürzt",
+  Pulling: "Image wird geladen", Pulled: "Image geladen", Created: "Angelegt", Started: "Gestartet", Scheduled: "Eingeplant",
+  SuccessfulCreate: "Angelegt", SuccessfulDelete: "Gelöscht", ScalingReplicaSet: "Replikas angepasst", SawCompletedJob: "Job abgeschlossen",
+  NodeReady: "Knoten bereit",
+  MemoryPressure: "Speicherdruck", DiskPressure: "Plattendruck", PIDPressure: "Prozessdruck", KubeletNotReady: "Kubelet nicht bereit", NodeStatusUnknown: "Knoten meldet sich nicht",
+  "nicht einplanbar": "Nicht einplanbar", "haengt beim Start": "Hängt beim Start", "nicht bereit": "Nicht bereit", "Zustand unbekannt": "Zustand unbekannt",
+  ausgesetzt: "Ausgesetzt", "abgesperrt (nimmt keine neuen Pods)": "Abgesperrt, nimmt keine neuen Pods",
+};
+const grund = (g) => {
+  const s = String(g ?? ""); let m;
+  if (GRUND[s]) return GRUND[s];
+  if ((m = /^beendet: (.+)$/.exec(s))) return `Beendet: ${GRUND[m[1]] || m[1]}`;
+  if ((m = /^nicht bereit \((.+)\)$/.exec(s))) return `Nicht bereit (${GRUND[m[1]] || m[1]})`;
+  return s;
+};
+const grundMarke = (roh, ton, sym) => `<span class="marke${ton ? " " + ton : ""}" title="${esc(roh)}">${sym ? symbol(sym) : ""}${esc(grund(roh))}</span>`;
+const ART = { deploy: "Deployment", sts: "StatefulSet", ds: "DaemonSet" };
+const ART_SYM = { deploy: "box", sts: "database", ds: "layers" };
+const FLUX = {
+  kustomizations: { plural: "Kustomizations", eins: "Kustomization", sym: "layers" },
+  gitrepositories: { plural: "Git-Quellen", eins: "Git-Quelle", sym: "git-branch" },
+  helmrepositories: { plural: "Helm-Quellen", eins: "Helm-Quelle", sym: "package" },
+  ocirepositories: { plural: "OCI-Quellen", eins: "OCI-Quelle", sym: "container" },
+  helmreleases: { plural: "HelmReleases", eins: "HelmRelease", sym: "rocket" },
+  imagepolicies: { plural: "Image-Regeln", eins: "ImagePolicy", sym: "scale" },
+  imagerepositories: { plural: "Image-Quellen", eins: "ImageRepository", sym: "archive" },
+  imageupdateautomations: { plural: "Image-Automation", eins: "Image-Automation", sym: "wand-sparkles" },
+};
+const fluxName = (art, eins) => (FLUX[art] ? FLUX[art][eins ? "eins" : "plural"] : art);
+
+/** Sperrgrund kurz und verständlich; der volle Text bleibt im Tooltip. */
+const kurzGrund = (g) => String(g || "").replace(/(\S+-Fenster auf \S+ bis .+?):\s.*$/, "$1");
+function sperre(roh) {
+  const t = String(roh || "");
+  const r = /^Recht fehlt: (.+?) [–-] Betreiber: (.+)$/.exec(t);
+  if (r) return { art: "recht", recht: r[1], befehl: r[2], kurz: `Recht fehlt: ${r[1]}`, voll: t };
+  return { art: /-Fenster auf /.test(t) ? "fenster" : "regel", kurz: kuerze(kurzGrund(t), 150), voll: t };
+}
+const sperrZeile = (roh, vorspann) => { const s = sperre(roh); return `<div class="sperre" title="${esc(s.voll)}">${symbol("lock")}<span>${vorspann ? esc(vorspann) + " · " : ""}${esc(s.kurz)}</span></div>`; };
+/** Langer Text: zwei Zeilen, Antippen klappt ihn auf. */
+const klemme = (t, lang = true) => { const s = String(t ?? ""); return `<span class="klemme${lang && s.length > 110 ? " lang" : ""}" title="${esc(s.length > 110 ? s : "")}">${esc(s)}</span>`; };
+const hinweisKasten = (sym, text, art = "") => `<div class="hinweis${art ? " " + art : ""}">${symbol(sym)}<span>${esc(text)}</span></div>`;
+const laedt = (text, gross = true) => `<div class="laedt${gross ? " gross" : ""}" data-seit="${Date.now()}" data-text="${esc(text)}">${esc(text)}</div>`;
+const fehlerZustand = (titel, e, aktion) => zustand({ symbol: "wifi-off", ton: "schlecht", titel, text: App.fehlertext(e), klein: true, knopf: { text: "Erneut versuchen", aktion, symbol: "refresh-cw" } });
+const imGruppe = (html) => `<div class="gruppe">${html}</div>`;
+const chevron = () => symbol("chevron-right", "weiter");
+const QUELLE = { kubernetes: "Kubernetes", pods: "Pods", prometheus: "Messwerte", fenster: "Fenster", replicasets: "ReplicaSets", jobs: "Jobs", cronjobs: "CronJobs",
+  nodes: "Knoten", flux: "Flux", zertifikate: "Zertifikate", alarme: "Alarme", deployments: "Deployments", statefulsets: "StatefulSets", daemonsets: "DaemonSets",
+  nutzung: "Verbrauchswerte", rechte: "Rechteprüfung" };
+const quelleName = (k) => String(k).startsWith("flux:") ? fluxName(String(k).slice(5)) : QUELLE[k] || k;
+/** Wenn der Hub eine Quelle nicht lesen konnte: ein Satz dazu, statt stillschweigend Lücken zu zeigen. */
+function quellenHinweis(quellen, nachsatz = "") {
+  const weg = Object.entries(quellen || {}).filter(([, v]) => v && v.ok === false);
+  const grundKurz = (f) => teile(kuerze(f, 80)).replace(/\s*\(([^)]*)\)/g, " – $1"); // keine Klammer in der Klammer
+  return weg.length ? hinweisKasten("triangle-alert", `Nicht alles lesbar: ${weg.map(([n, v]) => quelleName(n) + (v.fehler ? " (" + grundKurz(v.fehler) + ")" : "")).join(" · ")}.${nachsatz}`) : "";
+}
+/** Fehlen Rechte, steht das einmal oben im Bereich — und einmal, wer sie einrichtet — statt an jeder Zeile. */
+function rechteHinweis(gruende, satz = "Einigen Aktionen fehlen noch Rechte") {
+  const s = gruende.map((g) => sperre(g)).filter((x) => x.art === "recht");
+  if (!s.length) return "";
+  const rechte = [...new Set(s.map((x) => x.recht))];
+  return `<div class="hinweis info">${symbol("key-round")}<span>${esc(satz)}: ${rechte.map((r) => `<code>${esc(r)}</code>`).join(", ")}.`
+    + `<details><summary>Rechte einrichten</summary><p>Der Betreiber führt dazu aus: <code>${esc(s[0].befehl)}</code></p></details></span></div>`;
+}
+
+/** Eine Zeile: Kachel, Titel (+ Marken), Unterzeilen, Ende. Texte werden hier maskiert, Marken und Ende sind fertiges HTML. */
+function zeile(o) {
+  const unter = (o.unter || []).filter(Boolean).map((u) => typeof u === "string" ? `<span class="zeile-unter">${esc(u)}</span>`
+    : `<span class="zeile-unter${u.ton ? " " + u.ton : ""}">${u.h ?? esc(u.t)}</span>`).join("");
+  const innen = `${kachel(o.sym, o.ton, o.klein ? "klein" : "")}<span class="zeile-text"><span class="zeile-titel">${esc(o.titel)}${o.marken || ""}</span>${unter}</span>${o.ende || ""}`;
+  return o.knopf ? `<button type="button" class="zeile mitte" ${o.attr || ""}>${innen}</button>` : `<div class="zeile ${o.oben ? "oben" : "mitte"}" ${o.attr || ""}>${innen}</div>`;
+}
+
+// ── Zustand ─────────────────────────────────────────────────────────────────
+const S = {
+  knoten: null, lage: null, wl: null, flux: null, ereig: null, alt: null,
+  tab: "ueberblick", filterKnoten: "", fokus: "", mehr: false, altMehr: false,
+  offen: new Set(),            // aufgeklappte Knoten-Konfigurationen, Workload- und CronJob-Zeilen
+  stand: 0, veraltet: new Set(), ereigGeladen: false, start: null,
+};
+
+/** Offene Panels (Trockenlauf, Logs …) überleben das Neuzeichnen einer Liste. */
+function ablagenSichern(wurzel) {
+  const m = new Map();
+  for (const a of wurzel.querySelectorAll(".ablage")) if (a.id && a.firstElementChild) m.set(a.id, a);
+  return m;
+}
+function ablagenZurueck(wurzel, m, schluessel) {
+  for (const [id, alt] of m) {
+    const neu = document.getElementById(id);
+    if (neu && wurzel.contains(neu)) { neu.replaceWith(alt); if (schluessel) S.offen.add(schluessel(id)); }
+  }
+}
+
+// ── Kopf, Lage-Satz, Reiter ─────────────────────────────────────────────────
+function kopfZeichnen() {
+  const t = [];
+  if (S.knoten) t.push(mz((S.knoten.knoten || []).length, "Knoten", "Knoten"));
+  if (S.wl) t.push(mz(S.wl.zaehlung?.workloads ?? (S.wl.workloads || []).length, "Workload", "Workloads"));
+  if (S.stand) t.push(zeit.uhr(S.stand));
+  if (S.veraltet.size) t.push("nicht aktuell");
+  if (t.length) kopfsatz(t.join(" · "), S.veraltet.size ? "warn" : "");
+}
+const LAGE_ART = {
+  pods: ["Pod mit Problem", "Pods mit Problemen"], jobs: ["gescheiterter Job", "gescheiterte Jobs"],
+  flux: ["Flux-Objekt nicht bereit", "Flux-Objekte nicht bereit"], knoten: ["Knoten mit Problem", "Knoten mit Problemen"],
+  alarme: ["Alarm", "Alarme"], zertifikate: ["Zertifikat läuft bald ab", "Zertifikate laufen bald ab"], cronjobs_aus: ["CronJob ausgesetzt", "CronJobs ausgesetzt"],
+};
+const lageEintraege = (d) => (d.gruppen || []).flatMap((g) => (g.eintraege || []).map((e) => ({ art: g.art, s: e.schwere || g.schwere, e })));
+function lageSatzZeichnen() {
+  const el = $("lage-satz"), d = S.lage;
+  if (!d) return;
+  const alle = lageEintraege(d), laut = alle.filter((x) => x.s !== "info");
+  const rot = laut.filter((x) => x.s === "rot").length, gelb = laut.length - rot;
+  const ton = rot ? "schlecht" : laut.length ? "warn" : "gut";
+  const titel = rot ? `${mz(rot, "Fehler", "Fehler")}${gelb ? ` und ${mz(gelb, "Warnung", "Warnungen")}` : ""}`
+    : laut.length ? `${laut.length === 1 ? "1 Ding braucht" : laut.length + " Dinge brauchen"} einen Blick` : "Alles in Ordnung";
+  const teile = (d.gruppen || []).filter((g) => g.schwere !== "info").map((g) => { const a = LAGE_ART[g.art]; return a ? mz(g.anzahl, a[0], a[1]) : `${g.anzahl} × ${g.titel}`; });
+  const aus = (d.gruppen || []).find((g) => g.art === "cronjobs_aus");
+  const unter = laut.length ? teile.join(" · ") : "Keine Pods mit Problemen, keine gescheiterten Jobs, Flux ist bereit und kein Alarm aktiv.";
+  const extra = [aus ? mz(aus.anzahl, "CronJob ausgesetzt", "CronJobs ausgesetzt") : "",
+    Object.values(d.quellen || {}).some((q) => q && q.ok === false) ? "Nicht alle Quellen lesbar" : ""].filter(Boolean);
+  el.className = `satz ${ton}`;
+  el.innerHTML = kachel(rot ? "circle-alert" : laut.length ? "triangle-alert" : "circle-check", ton)
+    + `<div class="satz-text">${esc(titel)}<div class="zeile-unter">${esc([unter, ...(laut.length ? extra : extra.slice(0, 2))].filter(Boolean).join(" · "))}</div>`
+    + (laut.length ? `<button type="button" class="link klein" data-akt="zu-lage">Liste ansehen${symbol("chevron-down")}</button>` : "") + "</div>";
+  tabPunkt("ueberblick", rot ? "schlecht" : "warn", laut.length ? (rot ? "Es gibt Fehler" : "Es gibt Warnungen") : "");
+}
+/** Der Punkt im Reiter: die Farbe sagt „hier ist etwas“, der Text dazu steht im Tooltip und für Vorlesehilfen. */
+function tabPunkt(tab, ton, text) {
+  const p = document.querySelector(`#r-${tab} .punkt`);
+  p.className = `punkt ${ton}`; p.hidden = !text; p.title = text; p.setAttribute("aria-label", text);
+}
+function lageFehler(e) {
+  const el = $("lage-satz");
+  el.className = "satz schlecht";
+  el.innerHTML = kachel("circle-alert", "schlecht") + `<div class="satz-text">Die Lage ließ sich nicht lesen<div class="zeile-unter">${esc(App.fehlertext(e))}</div></div>`;
+}
+function tabWechseln(name, nachOben) {
+  S.tab = name;
+  for (const b of document.querySelectorAll("#reiter [data-tab]")) {
+    const an = b.dataset.tab === name;
+    b.classList.toggle("an", an); b.setAttribute("aria-selected", String(an)); b.tabIndex = an ? 0 : -1;
+  }
+  for (const p of document.querySelectorAll("[data-panel]")) p.hidden = p.dataset.panel !== name;
+  if (name === "mehr" && !S.ereigGeladen) ereignisseLaden();
+  if (nachOben) $("reiter").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ── Knoten ──────────────────────────────────────────────────────────────────
+const ANGEFORDERT_HILFE = "Angefordert: So viel haben die Pods auf diesem Knoten fest zugesagt bekommen (Requests). Die Marke im Balken zeigt diesen Wert.";
+const angText = (p) => p == null ? "" : `<span class="ang" title="${esc(ANGEFORDERT_HILFE)}"><i class="tick"></i>${zahl(p, 0)} % angefordert</span>`;
+/** Eine Messung: Name und große Zahl, Balken (mit Marke für „angefordert“), Zahlen darunter. */
+function messung(o) {
+  const hat = o.wert != null && !isNaN(Number(o.wert));
+  const ton = hat ? o.ton || "" : "";
+  const marker = o.angefordert != null ? `<b style="--ang:${Math.max(0, Math.min(99.5, Number(o.angefordert)))}%"></b>` : "";
+  const unter = (o.unter || []).filter(Boolean).map((u) => `<span>${u}</span>`).join("");
+  return `<div class="mess"><div class="mess-kopf"><span class="mess-name">${o.sym ? symbol(o.sym) : ""}${esc(o.name)}${o.extra ? `<span class="mut">${esc(o.extra)}</span>` : ""}</span>`
+    + `<span class="mess-wert ${ton}${hat ? "" : " ohne"}">${hat ? zahl(o.wert, 0) + "<small>%</small>" : "—"}</span></div>`
+    + `<div class="balken ${ton}" role="img" aria-label="${esc(o.name)}: ${hat ? zahl(o.wert, 0) + " Prozent" : "kein Messwert"}"><i style="--w:${hat ? Math.max(0, Math.min(100, Number(o.wert))) : 0}%"></i>${marker}</div>`
+    + messSpur(o.spur, ton) + (unter ? `<div class="mess-unter">${unter}</div>` : "") + "</div>";
+}
+/** Die letzten 6 Stunden aus dem Verlauf (cluster.knoten → spuren), fest auf 0–100 %: kleine Schwankungen bleiben klein. */
+function messSpur(werte, ton) {
+  const w = (werte || []).filter((x) => x != null && !isNaN(Number(x))).map(Number);
+  if (w.length < 2) return "";
+  const pkt = w.map((x, i) => `${((i / (w.length - 1)) * 1000).toFixed(0)},${(100 - Math.max(0, Math.min(100, x))).toFixed(1)}`).join(" ");
+  return `<svg class="mess-spur ${ton || ""}" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">`
+    + `<polygon class="flaeche" points="0,100 ${pkt} 1000,100"></polygon><polyline class="linie" points="${pkt}"></polyline></svg>`;
+}
+function knotenMessungen(k) {
+  const a = k.auslastung || {}, ang = k.angefordert || {}, v = k.vergebbar || {}, sp = k.spuren || {};
+  const zeilen = [];
+  const kerne = a.cpu_prozent != null && v.cpu != null ? (a.cpu_prozent / 100) * v.cpu : null;
+  zeilen.push(messung({ sym: "cpu", name: "CPU", wert: a.cpu_prozent, ton: stufe(a.cpu_prozent), angefordert: ang.cpu_prozent, spur: sp.cpu,
+    unter: [a.cpu_prozent == null ? "Kein Messwert" : `${zahl(kerne, 1)} von ${zahl(v.cpu, 0)} Kernen`, angText(ang.cpu_prozent)] }));
+  zeilen.push(messung({ sym: "memory-stick", name: "Arbeitsspeicher", wert: a.ram_prozent, ton: stufe(a.ram_prozent), angefordert: ang.ram_prozent, spur: sp.ram,
+    unter: [a.ram_gib == null ? "Kein Messwert" : `${zahl(a.ram_gib, 1)} von ${zahl(v.ram_gib, 1)} GiB`, angText(ang.ram_prozent)] }));
+  for (const g of a.gpus || []) {
+    const gesamt = (g.vram_mib || 0) + (g.vram_frei_mib || 0), gsp = (sp.gpus || {})[String(g.nr)] || {};
+    zeilen.push(messung({ sym: "gpu", name: `GPU ${g.nr}`, extra: String(g.modell || "").replace(/^NVIDIA\s+/, ""), wert: g.auslastung_prozent, spur: gsp.last }));
+    zeilen.push(messung({ sym: "memory-stick", name: "Grafikspeicher", wert: gesamt ? ((g.vram_mib || 0) / gesamt) * 100 : null, spur: gsp.speicher,
+      unter: [`${zahl((g.vram_mib || 0) / 1024, 1)} von ${zahl(gesamt / 1024, 1)} GiB belegt`] }));
+  }
+  if (a.platte_prozent != null) {
+    zeilen.push(messung({ sym: "hard-drive", name: "Festplatte", wert: a.platte_prozent, ton: stufe(a.platte_prozent, 80, 92), spur: sp.platte,
+      unter: [a.platte_frei_gib != null ? `${zahl(a.platte_frei_gib, 0)} GiB frei` : ""] }));
+  } else if (a.platte_frei_gib != null) {
+    zeilen.push(`<div class="mess"><div class="mess-kopf"><span class="mess-name">${symbol("hard-drive")}Festplatte${a.platte_fs ? `<span class="mut">${esc(a.platte_fs)}</span>` : ""}</span>`
+      + `<span class="mess-wert">${zahl(a.platte_frei_gib, 0)}<small>GiB frei</small></span></div>${messSpur(sp.platte)}</div>`);
+  }
+  return zeilen.join("");
+}
+function laeuftSeit(h) { return h == null ? "" : h < 48 ? `${Math.max(1, Math.round(h))} Std.` : `${Math.floor(h / 24)} Tagen`; }
+function knotenKarte(k) {
+  const sp = (k.aktionen || {}).absperren || {}, f = k.fenster, probleme = k.probleme || [], pods = k.pods || {}, b = k.boot || {};
+  const ton = !k.bereit || probleme.length ? "schlecht" : k.abgesperrt || f ? "warn" : "gut";
+  const marken = [k.steuerebene ? marke("Steuerebene", "akz") : "",
+    ...(k.rollen || []).filter((r) => !["control-plane", "master"].includes(r)).map((r) => marke(r === "worker" ? "Worker" : r)),
+    k.stufe ? marke(k.stufe) : "", k.abgesperrt ? marke("Abgesperrt", "warn", "lock") : ""].join("");
+  const status = k.bereit ? `Bereit${b.laeuft_h != null ? ` · läuft seit ${laeuftSeit(b.laeuft_h)}` : ""}` : `Nicht bereit${k.bereit_seit ? ` · ${seit(k.bereit_seit)}` : ""}`;
+  const art = f ? ({ dev: "Dev", test: "Test" }[f.art] || String(f.art || "").replace(/^./, (c) => c.toUpperCase())) : "";
+  const band = f ? `<div class="hinweis" title="${esc(f.grund)}">${symbol("calendar-clock")}<span><b>${esc(art)}-Fenster bis ${esc(zeit.tag(f.bis, true))}</b>${f.rest_min != null ? ` · noch ${esc(zeit.dauer(f.rest_min))}` : ""}${f.grund ? klemme(f.grund) : ""}</span></div>` : "";
+  const fehler = probleme.length ? `<div class="hinweis fehler" role="alert">${symbol("circle-alert")}<span>${probleme.map(esc).join(" · ")}</span></div>` : "";
+  const fakten = [
+    [b.zuletzt ? `<span>Zuletzt gestartet ${zeit.stempel(b.zuletzt)}</span>` : "", b.boots_14t != null ? `${mz(b.boots_14t, "Start", "Starts")} in 14 Tagen` : ""],
+    [`${mz(pods.anzahl ?? 0, "Pod", "Pods")} laufen`, pods.nicht_bereit ? `<span class="schlecht">${esc(mz(pods.nicht_bereit, "Pod", "Pods"))} nicht bereit</span>` : "", k.auslastung?.last1 != null ? `Systemlast ${zahl(k.auslastung.last1, 2)}` : ""],
+  ].map((z) => z.filter(Boolean).map((t) => t.startsWith("<span") ? t : esc(t)).join(" · ")).filter(Boolean).map((t) => `<div>${t}</div>`).join("");
+  const absperrName = sp.an === false ? "Freigeben" : "Absperren";
+  const absperr = sp.moeglich
+    ? { text: absperrName, symbol: sp.an ? "lock" : "lock-open", klasse: "klein", attr: { "data-akt": "absperren", "data-k": k.name, "data-an": String(sp.an) } }
+    : { text: absperrName, symbol: sp.an === false ? "lock-open" : "lock", klasse: "klein", disabled: true, titel: sp.grund || "nicht möglich" };
+  // Fehlende Rechte erklärt der Hinweis über den Karten einmal; hier bleiben nur die Gründe, die zu diesem Knoten gehören.
+  const sperrNotiz = !sp.moeglich && sp.grund && sperre(sp.grund).art !== "recht" ? sperrZeile(sp.grund, `${absperrName} gesperrt`) : "";
+  return `<article class="karte knoten" id="k-${esc(k.name)}">
+    <div class="k-kopf">${kachel(k.bereit ? "server" : "server-crash", ton, "gross")}<div class="k-titel"><h3>${esc(k.name)}</h3><div class="k-status${k.bereit ? "" : " schlecht"}">${esc(status)}</div>${marken ? `<div class="k-marken">${marken}</div>` : ""}</div></div>
+    ${band}${fehler}
+    <div class="messungen">${knotenMessungen(k)}</div>
+    <div class="k-fakten">${fakten}</div>
+    <div class="k-aktionen">
+      ${knoepfe([absperr,
+        { text: "Räumen (Probe)", symbol: "brush-cleaning", klasse: "klein", attr: { "data-akt": "raeumen", "data-k": k.name } },
+        { text: "Workloads hier", symbol: "boxes", klasse: "klein", attr: { "data-akt": "wl-hier", "data-k": k.name } }])}
+      ${sperrNotiz}
+    </div>
+    <div class="ablage" id="ka-${esc(k.name)}"></div>
+    <div class="k-konfig"><details data-k="${esc(k.name)}"${S.offen.has("k:" + k.name) ? " open" : ""}><summary>${symbol("sliders-horizontal")}Konfiguration</summary>${knotenDetail(k)}</details></div>
+  </article>`;
+}
+const PHASE = { Running: "läuft", Succeeded: "abgeschlossen", Failed: "fehlgeschlagen", Pending: "wartet", Unknown: "unbekannt" };
+/** Knotenbedingungen: [Text, wenn in Ordnung, Text, wenn nicht]. Druck-Bedingungen sind in Ordnung, wenn sie „False“ sind. */
+const BEDINGUNG = { Ready: ["Bereit", "Nicht bereit"], MemoryPressure: ["Kein Speicherdruck", "Speicherdruck"], DiskPressure: ["Kein Plattendruck", "Plattendruck"],
+  PIDPressure: ["Kein Prozessdruck", "Prozessdruck"], NetworkUnavailable: ["Netzwerk verfügbar", "Netzwerk nicht verfügbar"] };
+function kv(paare) { return `<dl class="kv">${paare.filter(Boolean).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`; }
+function knotenDetail(k) {
+  const s = k.system || {}, kap = k.kapazitaet || {}, v = k.vergebbar || {}, ang = k.angefordert || {}, lim = k.limits || {};
+  const labels = Object.entries(k.labels || {});
+  const taints = (k.taints || []).map((t) => `<code>${esc(t.key)}${t.wert ? "=" + esc(t.wert) : ""}:${esc(t.wirkung)}</code>`).join(" ") || "keine";
+  const bedingungen = (k.bedingungen || []).map((c) => {
+    const druck = c.typ !== "Ready", unbekannt = c.status === "Unknown";
+    const schlecht = unbekannt || (druck ? c.status === "True" : c.status !== "True");
+    const t = BEDINGUNG[c.typ];
+    const text = !t ? `${c.typ}: ${c.status}` : unbekannt ? `${t[1]}: unbekannt` : t[schlecht ? 1 : 0];
+    return `<span class="marke${schlecht ? " schlecht" : " gut"}" title="${esc([c.grund, c.meldung, c.seit ? "seit " + zeit.tag(c.seit, true) : ""].filter(Boolean).join(" · "))}">${symbol(schlecht ? "circle-alert" : "check")}${esc(text)}</span>`;
+  }).join(" ");
+  const podRang = (p) => (p.phase === "Running" ? (p.bereit ? 1 : 0) : p.phase === "Succeeded" ? 2 : 0);
+  const liste = (k.pods?.liste || []).slice().sort((a, b) => podRang(a) - podRang(b) || `${a.ns}/${a.name}`.localeCompare(`${b.ns}/${b.name}`));
+  const laufen = liste.filter((p) => p.phase === "Running").length;
+  const podZeilen = liste.map((p) => {
+    const gut = p.phase === "Running" ? p.bereit : p.phase === "Succeeded";
+    const ton = p.phase === "Succeeded" ? "" : gut ? "gut" : "schlecht";
+    return `<li><span class="punkt ${ton}"></span><span class="pod-name">${esc(p.ns)}/${esc(p.name)}</span><span class="mut">${esc(PHASE[p.phase] || p.phase)}${p.phase === "Running" && !p.bereit ? ", nicht bereit" : ""}${p.neustarts ? ` · ${p.neustarts}× neu gestartet` : ""}</span></li>`;
+  }).join("");
+  const kub = k.kubelet ? (k.kubelet.gesperrt ? sperrZeile(k.kubelet.gesperrt) : k.kubelet.recht_fehlt ? sperrZeile(k.kubelet.recht_fehlt)
+    : k.kubelet.fehler ? `<span class="fehler">${esc(k.kubelet.fehler)}</span>` : `<pre>${esc(JSON.stringify(k.kubelet.auszug, null, 1))}</pre>`)
+    : (k.aktionen?.kubelet || {}).moeglich ? `<button type="button" class="klein" data-akt="kubelet" data-k="${esc(k.name)}">${symbol("download")}Kubelet-Konfiguration laden</button>`
+      : sperrZeile(k.aktionen?.kubelet?.grund || "nicht verfügbar");
+  const gleich = kap.cpu === v.cpu && kap.ram_gib === v.ram_gib && kap.gpu === v.gpu && kap.pods === v.pods;
+  const fmt = (c) => `${zahl(c.cpu, 0)} Kerne · ${zahl(c.ram_gib, 1)} GiB Speicher${c.gpu ? ` · ${mz(c.gpu, "GPU", "GPUs")}` : ""} · ${mz(c.pods, "Pod", "Pods")}`;
+  return kv([
+    ["Adresse", `<code>${esc(k.adresse)}</code>`],
+    ["Rollen", (k.rollen || []).length ? (k.rollen || []).map((r) => marke({ "control-plane": "Steuerebene", master: "Master", worker: "Worker" }[r] || r)).join(" ") : "—"],
+    (k.aufgaben || []).length ? ["Aufgaben", k.aufgaben.map((a) => marke(a)).join(" ")] : null,
+    ["System", `${esc(s.os)} · Kernel ${esc(s.kernel)} · ${esc(s.arch)}`],
+    ["Kubelet", `${esc(s.kubelet)} · ${esc(String(s.laufzeit || "").replace("://", " "))}${s.swap_gib ? ` · Swap ${zahl(s.swap_gib, 1)} GiB` : ""}`],
+    (s.k3s_args || []).length ? ["k3s-Start", `<code>${esc(s.k3s_args.join(" "))}</code>`] : null,
+    ["Kapazität", esc(fmt(kap)) + (kap.platte_gib ? ` · ${zahl(kap.platte_gib, 0)} GiB Platte` : "")],
+    gleich ? null : ["Vergebbar", esc(fmt(v))],
+    ["Angefordert", `${zahl(ang.cpu, 2)} Kerne (${zahl(ang.cpu_prozent, 0)} %) · ${zahl(ang.ram_gib, 1)} GiB (${zahl(ang.ram_prozent, 0)} %)${ang.gpu ? ` · ${mz(ang.gpu, "GPU", "GPUs")}` : ""}`],
+    ["Limits", `${zahl(lim.cpu, 2)} Kerne (${zahl(lim.cpu_prozent, 0)} %) · ${zahl(lim.ram_gib, 1)} GiB (${zahl(lim.ram_prozent, 0)} %)`],
+    ["Taints", taints],
+    ["Bedingungen", bedingungen || "—"],
+    ["Labels", labels.length ? `<details><summary>${mz(labels.length, "Label", "Labels")}</summary><div class="codes">${labels.map(([a, b]) => `<code>${esc(a)}=${esc(b)}</code>`).join("")}</div></details>` : "keine"],
+    ["Kubelet-Konfig", kub],
+  ]) + `<details><summary>${symbol("boxes")}Pods auf diesem Knoten <span class="mut">${laufen} laufen${liste.length - laufen ? `, ${liste.length - laufen} beendet` : ""}</span></summary>${podZeilen ? `<ul class="pods">${podZeilen}</ul>` : '<div class="leer">Keine Pods.</div>'}</details>`;
+}
+// Mauerwerk: jede Karte bekommt so viele schmale Zeilen (4 px), wie ihre Höhe plus Abstand braucht.
+const MAUER_ZEILE = 4, MAUER_LUECKE = 14;
+function mauerSetzen(el) { el.style.gridRowEnd = "span " + Math.max(1, Math.ceil((el.getBoundingClientRect().height + MAUER_LUECKE) / MAUER_ZEILE)); }
+const mauer = typeof ResizeObserver === "function" ? new ResizeObserver((liste) => { for (const e of liste) mauerSetzen(e.target); }) : null;
+function knotenZeichnen() {
+  const d = S.knoten; if (!d) return;
+  const wurzel = $("knoten");
+  const alt = ablagenSichern(wurzel);
+  const liste = d.knoten || [];
+  if (mauer) mauer.disconnect();
+  wurzel.classList.remove("mauer");
+  wurzel.innerHTML = liste.map(knotenKarte).join("") || imGruppe(zustand({ symbol: "server-off", titel: "Keine Knoten gefunden", text: "Der Cluster meldet keine Knoten. Das ist ungewöhnlich — prüfe die Verbindung.", klein: true, knopf: { text: "Erneut versuchen", aktion: "neu-knoten", symbol: "refresh-cw" } }));
+  ablagenZurueck(wurzel, alt);
+  if (mauer && liste.length) {
+    for (const karte of wurzel.querySelectorAll(":scope > .knoten")) { mauerSetzen(karte); mauer.observe(karte); }
+    wurzel.classList.add("mauer");
+  }
+  $("knoten-zahl").textContent = liste.length || "";
+  const gruende = liste.flatMap((k) => Object.values(k.aktionen || {}).map((a) => a && a.grund));
+  $("knoten-meldungen").innerHTML = quellenHinweis(d.quellen, " Fehlende Werte stehen als „—“.") + rechteHinweis(gruende);
+  chipsZeichnen();
+  if (S.fokus) { // geöffnet für einen bestimmten Knoten: dorthin springen und ihn kurz hervorheben
+    const ziel = S.tab === "ueberblick" ? document.getElementById("k-" + S.fokus) : null; S.fokus = "";
+    if (ziel) { ziel.classList.add("fokus"); ziel.scrollIntoView({ block: "start" }); setTimeout(() => ziel.classList.remove("fokus"), 2600); }
+  }
+}
+
+// ── Was nicht stimmt ────────────────────────────────────────────────────────
+const SCHWERE = { rot: { ton: "schlecht", titel: "Fehler" }, gelb: { ton: "warn", titel: "Warnungen" }, info: { ton: "", titel: "Hinweise" } };
+const LAGE_REIHE = ["pods", "jobs", "knoten", "flux", "alarme", "zertifikate", "cronjobs_aus"];
+const sicher = (s) => String(s ?? "").replace(/[^A-Za-z0-9_.-]+/g, "_");
+/** Eine Zeile der Lage. Nur Pods bekommen einen Platz für das Logs-Panel; seine Kennung hängt am Pod, nicht an der Reihenfolge. */
+function lageZeile(art, e) {
+  const ton = e.schwere === "rot" ? "schlecht" : e.schwere === "gelb" ? "warn" : "grau";
+  if (art === "pods") {
+    const wl = String(e.name).split("/"), deploy = wl[0] === "deploy" ? wl[1] : "";
+    const ablage = `la-${sicher(`${e.ns}-${e.name}-${e.grund}`)}`;
+    return { ablage, html: zeile({ sym: "box", ton, titel: deploy || wl.slice(-1)[0], marken: grundMarke(e.grund, ton),
+      unter: [`${e.ns}${(e.knoten || []).length ? " · " + e.knoten.join(", ") : ""}${e.anzahl > 1 ? " · " + mz(e.anzahl, "Pod", "Pods") : ""}`, e.detail ? { t: podDetail(e.grund, e.detail) } : null],
+      ende: `<span class="zeile-ende"><button type="button" class="klein" data-akt="logs-lage" data-ablage="${ablage}" data-ns="${esc(e.ns)}" ${deploy ? `data-deploy="${esc(deploy)}"` : `data-pod="${esc((e.pods || [])[0] || "")}"`}>${symbol("scroll-text")}Logs</button></span>` }) };
+  }
+  if (art === "jobs") {
+    return { html: zeile({ sym: "calendar-x", ton, titel: e.name, marken: grundMarke(e.grund, ton),
+      unter: [{ h: `${esc(`${e.ns} · ${e.anzahl}× in 24 Std. · zuletzt `)}${zeit.stempel(e.zuletzt)}` }, e.seither_ok ? { t: "Seither wieder erfolgreich", ton: "gut" } : null] }) };
+  }
+  if (art === "flux") {
+    return { html: zeile({ sym: "git-branch", ton, titel: e.name, marken: grundMarke(e.ausgesetzt ? "Suspended" : e.grund, ton),
+      unter: [`${fluxName(e.art, true)} · ${e.ns}`, e.detail ? { h: klemme(meldung(e.detail)) } : null] }) };
+  }
+  if (art === "cronjobs_aus") {
+    return { html: zeile({ sym: "circle-pause", ton: "grau", oben: true, titel: e.name, marken: marke("Ausgesetzt"),
+      unter: [e.ns, { h: klemme(e.grund) }, e.bis ? `Bis ${e.bis}` : null] }) };
+  }
+  if (art === "knoten") {
+    return { html: zeile({ sym: "server-crash", ton, titel: e.name, marken: grundMarke(e.grund, ton), unter: [e.seit ? { h: zeit.stempel(e.seit, { seit: true, gross: true }) } : ""] }) };
+  }
+  if (art === "alarme") {
+    const stufeText = e.schwere === "rot" ? "Kritisch" : e.schwere === "gelb" ? "Warnung" : "Hinweis";
+    return { html: zeile({ sym: "bell-ring", ton, oben: true, titel: ALARM[e.name] || e.name, attr: `title="${esc(e.name)}"`,
+      marken: `<span class="marke ${ton === "grau" ? "" : ton}">${esc(stufeText)}${e.anzahl > 1 ? ` · ${e.anzahl}×` : ""}</span>`,
+      unter: [(e.ziele || []).length ? { h: klemme((e.ziele || []).join(", ")) } : null] }) };
+  }
+  if (art === "zertifikate") {
+    return { html: zeile({ sym: "shield-alert", ton, titel: e.name, marken: `<span class="marke ${ton}">${esc(e.grund)}</span>` }) };
+  }
+  return { html: zeile({ sym: "circle-alert", ton, titel: e.name || "Unbekannt", marken: e.grund ? grundMarke(e.grund, ton) : "" }) };
+}
+function lageZeichnen() {
+  const d = S.lage; if (!d) return;
+  const alt = ablagenSichern($("lage"));
+  const alle = lageEintraege(d).sort((a, b) => LAGE_REIHE.indexOf(a.art) - LAGE_REIHE.indexOf(b.art));
+  let html = "";
+  for (const stufeName of ["rot", "gelb", "info"]) {
+    const teil = alle.filter((x) => x.s === stufeName);
+    if (!teil.length) continue;
+    const sw = SCHWERE[stufeName];
+    html += `<div class="grp"><div class="grp-kopf"><span class="punkt ${sw.ton}"></span>${sw.titel}<span class="mut">${teil.length}</span></div><div class="gruppe">`
+      + teil.map((x) => { const z = lageZeile(x.art, x.e); return `<div class="blk">${z.html}${z.ablage ? `<div class="ablage" id="${z.ablage}"></div>` : ""}</div>`; }).join("") + "</div></div>";
+  }
+  if (!alle.length) html = imGruppe(zustand({ symbol: "circle-check", ton: "gut", titel: "Nichts auffällig", text: "Pods, Jobs, Flux und Alarme sind in Ordnung.", klein: true }));
+  // Zertifikat und andere Hinweise des Hubs als ruhige Zeilen
+  const infos = (d.info || []).map((t) => {
+    const m = /^Zertifikat (.+?): noch (\d+) Tag/.exec(t);
+    return m ? zeile({ sym: "shield-check", ton: "gut", titel: `Zertifikat ${m[1]}`, unter: [`Noch ${mz(Number(m[2]), "Tag", "Tage")} gültig`] }) : zeile({ sym: "info", ton: "akz", titel: t });
+  });
+  if (infos.length) html += `<div class="grp"><div class="grp-kopf"><span class="punkt gut"></span>In Ordnung<span class="mut">${infos.length}</span></div><div class="gruppe">${infos.map((z) => `<div class="blk">${z}</div>`).join("")}</div></div>`;
+  const hinweis = quellenHinweis(d.quellen);
+  if (hinweis) html = `<div class="meldungen oben">${hinweis}</div>` + html;
+  $("lage").innerHTML = html;
+  ablagenZurueck($("lage"), alt);
+  const laut = alle.filter((x) => x.s !== "info").length;
+  $("lage-zahl").textContent = alle.length || "";
+  $("lage-zahl").title = laut ? `${laut} davon brauchen einen Blick` : "";
+}
+
+// ── Workloads ───────────────────────────────────────────────────────────────
+function chipsZeichnen() {
+  const namen = (S.knoten?.knoten || []).map((k) => k.name);
+  $("wl-knoten").innerHTML = ["", ...namen].map((n) => `<button type="button" class="chip${S.filterKnoten === n ? " an" : ""}" aria-pressed="${S.filterKnoten === n}" data-knoten="${esc(n)}">${n ? symbol("server") + esc(n) : "Alle Knoten"}</button>`).join("");
+}
+function wlKey(w) { return `${w.art}:${w.ns}:${w.name}`; }
+/** Probleme eines Workloads kommen als „<pod>: <grund>“ oder „0 von 1 bereit“. */
+const PROBLEM = /^(.+?): (.+)$/;
+const problemText = (p) => { const m = PROBLEM.exec(p); return m ? `${esc(grund(m[2]))} · <code>${esc(m[1])}</code>` : esc(p); };
+function wlGefiltert() {
+  const d = S.wl; if (!d) return [];
+  const ns = $("wl-ns").value, q = $("wl-q").value.trim().toLowerCase(), nur = $("wl-probleme").checked;
+  return (d.workloads || []).filter((w) => (!S.filterKnoten || (w.knoten || []).includes(S.filterKnoten)) && (!ns || w.ns === ns)
+    && (!nur || (w.probleme || []).length) && (!q || `${w.ns}/${w.name} ${(w.bilder || []).join(" ")}`.toLowerCase().includes(q)));
+}
+/** Aktionsknöpfe einer Zeile: möglich → Knopf, gesperrt → Knopf grau und der Grund darunter (gleiche Gründe nur einmal). */
+function aktionsKnoepfe(w) {
+  const a = w.aktionen || {}, id = wlKey(w);
+  const knopf = (akt, text, sym, info) => !info ? null : info.moeglich
+    ? { text, symbol: sym, klasse: "klein", attr: { "data-akt": akt, "data-id": id } }
+    : { text, symbol: sym, klasse: "klein", disabled: true, titel: info.grund || "nicht möglich" };
+  const gesperrt = [["Neu starten", a.neustarten], ["Skalieren", w.art === "deploy" ? a.skalieren : null], ["Logs", a.logs]].filter(([, i]) => i && !i.moeglich && i.grund);
+  const gruppen = new Map();
+  for (const [name, i] of gesperrt) { const k = i.grund; gruppen.set(k, [...(gruppen.get(k) || []), name]); }
+  return knoepfe([knopf("neustarten", "Neu starten", "rotate-cw", a.neustarten), w.art === "deploy" && knopf("skalieren", "Skalieren", "scaling", a.skalieren),
+    knopf("logs", "Logs", "scroll-text", a.logs), { text: "Warum hier", symbol: "circle-help", klasse: "klein leise", attr: { "data-akt": "warum", "data-id": id } }])
+    + (gruppen.size ? `<div class="sperre-liste">${[...gruppen].map(([g, namen]) => sperrZeile(g, `${namen.join(" und ")} gesperrt`)).join("")}</div>` : "");
+}
+function wlDetail(w) {
+  const ab = w.letzter_abbruch, nutzung = w.nutzung;
+  const von = { flux: "Flux", hand: "Hand", autoskalierer: "Autoscaler" }[w.replikas_von] || w.replikas_von;
+  const paare = [
+    (w.knoten || []).length ? ["Knoten", w.knoten.map((k) => marke(k)).join(" ")] : ["Knoten", "Läuft auf keinem Knoten"],
+    (w.bilder || []).length ? ["Images", w.bilder.map((b) => `<code>${esc(b)}</code>`).join(" ")] : null,
+    nutzung ? ["Verbrauch jetzt", `${kerneText(nutzung.cpu)} · ${zahl(nutzung.ram_mib, 0)} MiB`] : null,
+    w.neustarts ? ["Neustarts", `${w.neustarts}×${ab ? ` · zuletzt ${esc(grund(ab.grund))}${ab.code != null ? ` (Code ${esc(ab.code)})` : ""}, ${zeit.stempel(ab.wann)}` : ""}`] : null,
+    w.flux ? ["Verwaltet von", `Flux · ${esc(w.flux)}`] : null,
+    von ? ["Replikas", `gesteuert von ${esc(von)}`] : null,
+  ];
+  const pods = (w.pods || []).length ? `<details><summary>${symbol("boxes")}${mz(w.pods.length, "Pod", "Pods")}</summary><ul class="pods">${w.pods.map((p) => `<li><span class="punkt ${p.bereit ? "gut" : "schlecht"}"></span><span class="pod-name">${esc(p.name)}</span><span class="mut">${esc(p.knoten || "—")}${p.neustarts ? ` · ${p.neustarts}× neu gestartet` : ""}${p.gesperrt ? " · gesperrt" : ""}</span></li>`).join("")}</ul></details>` : "";
+  const probleme = (w.probleme || []).length ? `<div class="hinweis fehler">${symbol("circle-alert")}<span>${w.probleme.map(problemText).join("<br>")}</span></div>` : "";
+  return probleme + kv(paare) + pods + aktionsKnoepfe(w);
+}
+function wlZeile(w) {
+  const id = wlKey(w), key = "w:" + id, offen = S.offen.has(key);
+  const problem = (w.probleme || []).length > 0;
+  const ton = problem ? "schlecht" : w.soll === 0 ? "grau" : w.bereit < w.soll ? "warn" : "gut";
+  const bereitTon = problem && w.bereit >= w.soll ? "" : w.soll === 0 ? "aus" : w.bereit < w.soll ? (w.bereit === 0 ? "schlecht" : "warn") : "";
+  const knoten = (w.knoten || []).join(", ");
+  const unter = [`${w.ns} · ${ART[w.art] || w.art}${knoten ? " · " + knoten : ""}`];
+  if (problem) unter.push({ t: w.probleme.map((p) => { const m = PROBLEM.exec(p); return m ? grund(m[2]) : p; }).filter((v, i, a) => a.indexOf(v) === i).join(" · "), ton: "schlecht" });
+  const ende = `<span class="zeile-ende"><span class="bereit ${bereitTon}">${w.soll === 0 ? "aus" : `${w.bereit}/${w.soll}`}</span>${chevron()}</span>`;
+  return `<div class="blk" id="w-${esc(id)}">${zeile({ sym: ART_SYM[w.art] || "box", ton, titel: w.name, unter, ende, knopf: true,
+    attr: `data-toggle="${esc(key)}" aria-expanded="${offen}" aria-controls="wd-${esc(id)}"` })}`
+    + `<div class="detail" id="wd-${esc(id)}" data-art="w" data-id="${esc(id)}"${offen ? "" : " hidden"}><div class="detail-inhalt">${offen ? wlDetail(w) : ""}</div><div class="ablage" id="wa-${esc(id)}"></div></div></div>`;
+}
+function wlZeichnen() {
+  const d = S.wl; if (!d) return;
+  const lg = $("workloads");
+  const alt = ablagenSichern(lg);
+  const start = S.start; S.start = null; // Filter aus dem ersten Aufruf („zeig die Workloads auf knoten-a“) gelten einmal
+  if (start) { S.filterKnoten = start.knoten; $("wl-probleme").checked = start.probleme; chipsZeichnen(); }
+  const alle = new Set((d.workloads || []).map((w) => w.ns));
+  const sel = $("wl-ns"), vorher = start ? start.ns : sel.value;
+  sel.innerHTML = '<option value="">Alle Namespaces</option>' + [...alle].sort().map((n) => `<option>${esc(n)}</option>`).join("");
+  sel.value = alle.has(vorher) ? vorher : "";
+  const l = wlGefiltert(), max = S.mehr ? 5000 : 30;
+  const gefiltert = !!(S.filterKnoten || $("wl-ns").value || $("wl-q").value.trim() || $("wl-probleme").checked);
+  for (const id of alt.keys()) S.offen.add("w:" + id.slice(3));
+  lg.innerHTML = l.length ? imGruppe(l.slice(0, max).map(wlZeile).join("")) + (l.length > max ? `<div class="mehr-knopf"><button type="button" data-akt="mehr">${symbol("chevron-down")}Alle ${zahl(l.length, 0)} zeigen</button></div>` : "")
+    : imGruppe(gefiltert
+      ? zustand({ symbol: "search", titel: "Nichts gefunden", text: "Zu diesen Filtern gibt es keine Workloads.", klein: true, knopf: { text: "Filter zurücksetzen", aktion: "filter-weg", symbol: "x" } })
+      : zustand({ symbol: "boxes", titel: "Keine Workloads", text: "Der Cluster meldet keine Workloads.", klein: true }));
+  ablagenZurueck(lg, alt);
+  const z = d.zaehlung || {};
+  const gesamt = z.workloads ?? (d.workloads || []).length;
+  $("wl-zahl").textContent = gefiltert && l.length !== gesamt ? `${l.length} von ${gesamt}` : gesamt;
+  $("wl-info").textContent = z.mit_problem ? `${mz(z.mit_problem, "mit Problem", "mit Problemen")}` : "";
+  const gruende = [...(d.workloads || []), ...(d.cronjobs || [])].flatMap((x) => Object.values(x.aktionen || {}).map((a) => a && a.grund));
+  // Die CronJobs stehen unter der langen Liste: ein Hinweis mit Sprung, wenn dort etwas auffällt.
+  const cjRot = (d.cronjobs || []).filter((c) => c.zustand === "rot").length, cjAus = (d.cronjobs || []).filter((c) => c.ausgesetzt).length;
+  const cjSprung = cjRot || cjAus
+    ? `<button type="button" class="link" data-akt="zu-cron">${[cjRot ? mz(cjRot, "CronJob zuletzt gescheitert", "CronJobs zuletzt gescheitert") : "", cjAus ? mz(cjAus, "CronJob ausgesetzt", "CronJobs ausgesetzt") : ""].filter(Boolean).join(" · ")}${symbol("chevron-down")}</button>` : "";
+  $("wl-meldungen").innerHTML = cjSprung + quellenHinweis(d.quellen) + rechteHinweis(gruende);
+  tabPunkt("workloads", "schlecht", z.mit_problem || z.cronjobs_rot ? "Es gibt Workloads oder CronJobs mit Problemen" : "");
+  cjZeichnen();
+}
+const ZEITPLAN = [
+  [/^\*\/(\d+) \* \* \* \*$/, (m) => `alle ${m[1]} Min.`], [/^\S+ \*\/(\d+) \* \* \*$/, (m) => `alle ${m[1]} Std.`],
+  [/^\S+ \* \* \* \*$/, () => "stündlich"], [/^\S+ \S*[,-]\S* \* \* \*$/, () => "mehrmals täglich"], [/^\S+ \d+ \* \* \*$/, () => "täglich"],
+  [/^\S+ \S+ \* \* [1-7]$/, (m) => "wöchentlich"], [/^\S+ \S+ \* \* \S+$/, () => "an bestimmten Tagen"], [/^\S+ \S+ \d+ \* \*$/, () => "monatlich"],
+  [/^@hourly$/, () => "stündlich"], [/^@daily$|^@midnight$/, () => "täglich"], [/^@weekly$/, () => "wöchentlich"], [/^@monthly$/, () => "monatlich"],
+];
+const zeitplanText = (z) => { const s = String(z || "").trim(); for (const [re, f] of ZEITPLAN) { const m = re.exec(s); if (m) return f(m); } return s; };
+function cjDetail(c) {
+  const j = (c.aktionen || {}).jetzt || {}, fe = c.letzter_fehler;
+  const paare = [
+    ["Zeitplan", `${esc(zeitplanText(c.zeitplan))} · <code>${esc(c.zeitplan)}</code>`],
+    ["Zuletzt gestartet", c.zuletzt_geplant ? zeit.stempel(c.zuletzt_geplant) : "noch nie"],
+    ["Zuletzt erfolgreich", c.zuletzt_erfolgreich ? zeit.stempel(c.zuletzt_erfolgreich) : "noch nie"],
+    c.fehlschlaege_24h ? ["Gescheitert", `${mz(c.fehlschlaege_24h, "Mal", "Mal")} in 24 Std.${fe ? ` · ${esc(grund(fe.grund))}, ${zeit.stempel(fe.wann)} (Job <code>${esc(fe.job)}</code>)` : ""}`] : null,
+    c.aktiv ? ["Läuft gerade", mz(c.aktiv, "Job", "Jobs")] : null,
+    (c.knoten || []).length ? ["Knoten", c.knoten.map((k) => marke(k)).join(" ")] : null,
+    (c.messknoten_bezug || []).length ? ["Arbeitet gegen " + esc(c.messknoten || "den Messknoten"), esc(c.messknoten_bezug.join(" · "))] : null,
+    c.grund_ausgesetzt ? ["Ausgesetzt, weil", klemme(c.grund_ausgesetzt)] : null,
+  ];
+  const starten = j.moeglich ? `<button type="button" class="klein" data-akt="cronjob" data-ns="${esc(c.ns)}" data-n="${esc(c.name)}">${symbol("play")}Jetzt starten</button>${j.hinweis ? `<span class="mut">${esc(j.hinweis)}</span>` : ""}`
+    : `<button type="button" class="klein" disabled title="${esc(j.grund || "nicht möglich")}">${symbol("play")}Jetzt starten</button>`;
+  return kv(paare) + `<div class="knoepfe">${starten}</div>` + (!j.moeglich && j.grund ? sperrZeile(j.grund, "Starten gesperrt") : "");
+}
+function cjZeile(c) {
+  const id = `cj:${c.ns}:${c.name}`, key = "c:" + c.ns + ":" + c.name, offen = S.offen.has(key);
+  const rot = c.zustand === "rot", ton = c.ausgesetzt ? "grau" : rot ? "schlecht" : "gut";
+  const marken = (c.ausgesetzt ? marke("Ausgesetzt", "warn") : "") + (rot ? marke("Zuletzt gescheitert", "schlecht") : "");
+  const unter = [`${c.ns} · ${zeitplanText(c.zeitplan)}`, c.zuletzt_erfolgreich ? { h: `Zuletzt erfolgreich ${zeit.stempel(c.zuletzt_erfolgreich)}` } : "Noch nie erfolgreich",
+    c.fehlschlaege_24h ? { t: `${mz(c.fehlschlaege_24h, "Mal", "Mal")} gescheitert in 24 Std.${c.letzter_fehler ? " (" + grund(c.letzter_fehler.grund) + ")" : ""}`, ton: "schlecht" } : null];
+  const ende = `<span class="zeile-ende">${chevron()}</span>`;
+  return `<div class="blk" id="w-${esc(id)}">${zeile({ sym: c.ausgesetzt ? "circle-pause" : "timer", ton, titel: c.name, marken, unter, ende, knopf: true,
+    attr: `data-toggle="${esc(key)}" aria-expanded="${offen}" aria-controls="wd-${esc(id)}"` })}`
+    + `<div class="detail" id="wd-${esc(id)}" data-art="c" data-id="${esc(c.ns + ":" + c.name)}"${offen ? "" : " hidden"}><div class="detail-inhalt">${offen ? cjDetail(c) : ""}</div><div class="ablage" id="wa-${esc(id)}"></div></div></div>`;
+}
+function cjZeichnen() {
+  const d = S.wl; if (!d) return;
+  const lg = $("cronjobs");
+  const alt = ablagenSichern(lg);
+  const q = $("cj-q").value.trim().toLowerCase(), alle = $("cj-alle").checked;
+  const l = (d.cronjobs || []).filter((c) => (alle || q || c.zustand !== "ok" || c.ausgesetzt) && (!q || `${c.ns}/${c.name}`.toLowerCase().includes(q)));
+  for (const id of alt.keys()) S.offen.add("c:" + id.slice(6));
+  const keine = !(d.cronjobs || []).length;
+  lg.innerHTML = l.length ? imGruppe(l.map(cjZeile).join(""))
+    : imGruppe(keine ? zustand({ symbol: "timer", klein: true, titel: "Keine CronJobs", text: "Der Cluster meldet keine CronJobs." })
+      : zustand({ symbol: alle || q ? "search" : "circle-check", ton: alle || q ? "grau" : "gut", klein: true,
+        titel: alle || q ? "Nichts gefunden" : "Alle CronJobs in Ordnung", text: alle || q ? "Zu dieser Suche gibt es keine CronJobs." : `Mit „Alle zeigen“ siehst du die ganze Liste (${(d.cronjobs || []).length}).` }));
+  ablagenZurueck(lg, alt);
+  const z = d.zaehlung || {};
+  $("cj-zahl").textContent = z.cronjobs ?? (d.cronjobs || []).length;
+  $("cj-info").textContent = [z.cronjobs_rot ? `${z.cronjobs_rot} zuletzt gescheitert` : "", !alle && !q ? `${l.length} angezeigt` : ""].filter(Boolean).join(" · ");
+}
+
+// ── Flux ────────────────────────────────────────────────────────────────────
+function fluxZeichnen() {
+  const d = S.flux; if (!d) return;
+  const arten = d.arten || {};
+  const karten = Object.entries(arten).map(([art, a]) => {
+    const f = FLUX[art] || { plural: art, sym: "git-branch" };
+    if (!a.ok) return `<div class="kennzahl"><div class="augenbraue">${symbol(f.sym)}${esc(f.plural)}</div><div class="zahl-gross warn">—</div><div class="zahl-unter">${a.recht_fehlt ? "Recht fehlt" : "Nicht lesbar"}</div></div>`;
+    const offen = a.gesamt - a.bereit, ton = offen ? "warn" : "";
+    return `<div class="kennzahl"><div class="augenbraue">${symbol(f.sym)}${esc(f.plural)}</div><div class="zahl-gross ${ton}">${zahl(a.bereit, 0)}<small>von ${zahl(a.gesamt, 0)}</small></div>`
+      + `<div class="zahl-unter">${a.gesamt === 0 ? "Keine vorhanden" : offen ? `${zahl(offen, 0)} nicht bereit` : "Alle bereit"}${a.ausgesetzt ? ` · ${zahl(a.ausgesetzt, 0)} ausgesetzt` : ""}</div></div>`;
+  }).join("");
+  const probleme = (d.probleme || []).map((e) => {
+    const ton = e.ausgesetzt ? "warn" : e.bereit === "Unknown" ? "warn" : "schlecht";
+    return `<div class="blk">${zeile({ sym: FLUX[e.art]?.sym || "git-branch", ton, oben: true, titel: e.name, marken: grundMarke(e.ausgesetzt ? "Suspended" : e.grund || "nicht bereit", ton),
+      unter: [`${fluxName(e.art, true)} · ${e.ns}`, e.meldung ? { h: klemme(meldung(e.meldung)) } : null, e.revision ? `Stand ${String(e.revision).replace(/^.*:/, "").slice(0, 8)}` : null] })}</div>`;
+  }).join("");
+  const rechte = rechteHinweis(Object.values(arten).filter((a) => !a.ok && a.recht_fehlt).map((a) => a.fehler), "Für einige Flux-Arten fehlt das Leserecht");
+  const ks = ((arten.kustomizations || {}).eintraege || []).slice().sort((a, b) => (a.bereit === "True") - (b.bereit === "True") || a.name.localeCompare(b.name));
+  const intervall = ks.find((e) => e.intervall)?.intervall;
+  const wurzel = $("flux"), alt = ablagenSichern(wurzel);
+  const vorher = { ks: $("flux-ks")?.value, quelle: $("flux-quelle")?.checked };
+  wurzel.innerHTML = `<div class="kennzahlen breit gleich">${karten}</div>`
+    + (rechte ? `<div class="meldungen oben nach-zahlen">${rechte}</div>` : "")
+    + `<section class="abschnitt"><h2>${symbol("triangle-alert")}Braucht Aufmerksamkeit<span class="anzahl">${(d.probleme || []).length}</span></h2>`
+    + (probleme ? imGruppe(probleme) : imGruppe(zustand({ symbol: "circle-check", ton: "gut", titel: "Alles bereit", text: "Kein Flux-Objekt ist ausgesetzt oder hängt.", klein: true }))) + "</section>"
+    + `<section class="abschnitt"><h2>${symbol("refresh-cw")}Abgleich anstoßen</h2><div class="karte abgleich">`
+    + (ks.length
+      ? `<p class="mut">Flux gleicht von selbst ab${intervall ? ` (alle ${esc(dauerKurz(intervall))})` : ""}. Der Anstoß zieht den nächsten Abgleich nur vor.</p>`
+      + `<div class="leiste"><select id="flux-ks" aria-label="Kustomization">${ks.map((e) => `<option value="${esc(e.ns)}/${esc(e.name)}">${esc(e.name)}${e.bereit !== "True" ? " (nicht bereit)" : ""}</option>`).join("")}</select>`
+      + `<label class="wahl"><input id="flux-quelle" type="checkbox" checked> Quelle zuerst neu holen</label>`
+      + `<button type="button" class="haupt" data-akt="abgleichen">${symbol("refresh-cw")}Abgleichen</button></div>`
+      : `<p class="mut">Es gibt keine Kustomization, die sich abgleichen ließe.</p>`)
+    + `<div class="ablage" id="fa"></div></div></section>`;
+  ablagenZurueck(wurzel, alt);
+  if (vorher.ks && $("flux-ks") && [...$("flux-ks").options].some((o) => o.value === vorher.ks)) $("flux-ks").value = vorher.ks;
+  if (vorher.quelle === false && $("flux-quelle")) $("flux-quelle").checked = false;
+  $("flux-zahl").textContent = "";
+  $("flux-info").textContent = d.anzahl_probleme ? `${mz(d.anzahl_probleme, "Objekt", "Objekte")} nicht in Ordnung` : "Alles bereit";
+  tabPunkt("flux", "warn", d.anzahl_probleme ? "Es gibt Flux-Objekte, die nicht in Ordnung sind" : "");
+}
+
+// ── Ereignisse ──────────────────────────────────────────────────────────────
+/** Kubernetes-Meldungen sind Englisch: häufige Sätze und Fehlerteile auf Deutsch, der Rest bleibt, die Urfassung steht im Tooltip. */
+const TEILE = [
+  [/^Get "([^"]+)": /, (m, u) => `Abruf von ${u}: `],
+  [/context deadline exceeded \(Client\.Timeout exceeded while awaiting headers\)/g, () => "Zeitüberschreitung, keine Antwort"],
+  [/context deadline exceeded/g, () => "Zeitüberschreitung"],
+  [/i\/o timeout/g, () => "Zeitüberschreitung"],
+  [/\bforbidden\b/gi, () => "Zugriff verweigert"],
+  [/\bunauthorized\b/gi, () => "nicht angemeldet"],
+  [/connection refused/g, () => "Verbindung abgelehnt"],
+  [/connection reset by peer/g, () => "Verbindung zurückgesetzt"],
+  [/no such host/g, () => "Host nicht gefunden"],
+  [/HTTP probe failed with statuscode: (\d+)/g, (m, n) => `HTTP-Status ${n}`],
+  [/unexpected status code (\d+)(?: [A-Za-z ]+)?/g, (m, n) => `unerwarteter HTTP-Status ${n}`],
+  [/failed to pull and unpack image "([^"]+)"/g, (m, i) => `Image „${i}“ nicht ladbar`],
+  [/pull access denied/g, () => "Zugriff verweigert"],
+  [/manifest unknown/g, () => "Manifest unbekannt"],
+  [/(\d+) node\(s\) had untolerated taint \{([^}]*)\}/g, (m, n, t) => `${n} Knoten mit nicht tolerierter Taint ${t}`],
+  [/(\d+) node\(s\) were unschedulable/g, (m, n) => `${n} Knoten gesperrt`],
+  [/(\d+) node\(s\) didn't match Pod's node affinity\/selector/g, (m, n) => `${n} Knoten passen nicht zur Vorgabe`],
+  [/(\d+) Insufficient memory/g, (m, n) => `${n} mit zu wenig Arbeitsspeicher`],
+  [/(\d+) Insufficient cpu/gi, (m, n) => `${n} mit zu wenig CPU`],
+  [/(\d+) Insufficient nvidia\.com\/gpu/g, (m, n) => `${n} ohne freie GPU`],
+];
+const teile = (t) => TEILE.reduce((s, [re, f]) => s.replace(re, f), String(t ?? ""));
+const MELDUNG = [
+  [/^Readiness probe failed: (.*)$/s, (m) => `Bereitschaftsprüfung fehlgeschlagen: ${teile(m[1])}`],
+  [/^Liveness probe failed: (.*)$/s, (m) => `Lebendigkeitsprüfung fehlgeschlagen: ${teile(m[1])}`],
+  [/^Startup probe failed: (.*)$/s, (m) => `Startprüfung fehlgeschlagen: ${teile(m[1])}`],
+  [/^Back-off restarting failed container.*$/s, () => "Der Container ist abgestürzt und wird mit Wartezeit neu gestartet."],
+  [/^Deleted job: jobs\.batch "(.+?)" not found$/, (m) => `Der alte Job „${m[1]}“ ließ sich nicht aufräumen, es gibt ihn nicht mehr.`],
+  [/^Back-off pulling image "(.+?)".*$/s, (m) => `Das Image „${m[1]}“ wird mit Wartezeit erneut geladen.`],
+  [/^Failed to pull image "(.+?)": (.*)$/s, (m) => `Das Image „${m[1]}“ ließ sich nicht laden: ${teile(m[2].replace(/^rpc error: code = \w+ desc = /, "")
+    .replace(/^failed to pull and unpack image(?: "[^"]*")?:? ?/, "").replace(/^failed to resolve reference "[^"]*": ?/, ""))}`],
+  [/^Node (\S+) status is now: (\w+)$/, (m) => `Zustand von ${m[1]} ist jetzt „${GRUND[m[2]] || m[2]}“.`],
+  [/^reading tags: GET (\S+?): (.*)$/s, (m) => `Tags von ${m[1]} lesen: ${teile(m[2])}`],
+  [/^0\/(\d+) nodes are available: (.*)$/s, (m) => `Auf keinem der ${m[1]} Knoten einplanbar: ${teile(m[2])}`],
+  [/^Saw completed job: (.+?), condition: (\w+)$/, (m) => `Job ${m[1]} ist beendet (${GRUND[m[2]] ? GRUND[m[2]].toLowerCase() : m[2]}).`],
+  [/^kustomize build failed: (.*)$/s, (m) => `Bauen mit kustomize fehlgeschlagen: ${m[1]}`],
+  [/^back-off (\S+) restarting failed container=(\S+) pod=\S+$/, (m) => `Wartet ${dauerKurz(m[1]) || "kurz"}, bevor der Container ${m[2]} neu startet.`],
+  [/^(secret|configmap) "(.+?)" not found$/i, (m) => `${m[1].toLowerCase() === "secret" ? "Secret" : "ConfigMap"} „${m[2]}“ nicht gefunden`],
+  [/^The node was low on resource: ([\w-]+)\./, (m) => `Der Knoten hatte zu wenig ${{ "ephemeral-storage": "lokalen Speicher", memory: "Arbeitsspeicher", cpu: "CPU" }[m[1]] || m[1]}.`],
+  [/^rpc error: code = \w+ desc = (.*)$/s, (m) => teile(m[1])],
+  [/^Reconciliation in progress$/, () => "Wird gerade abgeglichen"],
+];
+const meldung = (t) => { const s = String(t ?? ""); for (const [re, f] of MELDUNG) { const m = re.exec(s); if (m) return f(m); } return teile(s); };
+const KLASSE = { Node: "Knoten", PersistentVolumeClaim: "Volume-Anforderung", Service: "Dienst", Namespace: "Namespace" };
+function ereignisseZeichnen() {
+  const d = S.ereig; if (!d) return;
+  const zeilen = (d.gruppen || []).map((g) => {
+    const warn = g.typ === "Warning", ton = warn ? "warn" : "akz";
+    const wo = [KLASSE[g.art] || g.art, g.ns, g.objekte > 1 ? mz(g.objekte, "Objekt", "Objekte") : "", (g.knoten || []).join(", ")].filter(Boolean).join(" · ");
+    return `<div class="blk">${zeile({ sym: warn ? "triangle-alert" : "info", ton, oben: true, titel: g.objekt, marken: grundMarke(g.grund, warn ? "warn" : ""),
+      unter: [wo, g.meldung ? { h: klemme(meldung(g.meldung)) } : null, { h: `${esc(`${zahl(g.anzahl, 0)}× · zuletzt `)}${zeit.stempel(g.zuletzt)}` }], attr: g.meldung ? `title="${esc(g.meldung)}"` : "" })}</div>`;
+  }).join("");
+  const laerm = (d.laerm || []).map((x) => `${grund(x.grund)} ${zahl(x.anzahl, 0)}× (${mz(x.objekte, "Objekt", "Objekte")})`).join(" · ");
+  const zeitraum = d.stunden <= 24 ? `${d.stunden} Stunden` : `${Math.round(d.stunden / 24)} Tagen`;
+  $("ereignisse").innerHTML = (zeilen ? imGruppe(zeilen) : imGruppe(zustand({ symbol: "circle-check", ton: "gut", klein: true, titel: "Keine Ereignisse",
+      text: d.nur_warnungen ? `In den letzten ${zeitraum} gab es keine Warnungen.` : "In diesem Zeitraum ist nichts passiert." })))
+    + (laerm ? `<p class="rauschen">${symbol("circle-minus")}<span>Ausgeblendet, weil es nur Rauschen ist: ${esc(laerm)}</span></p>` : "");
+  $("ev-zahl").textContent = (d.gruppen || []).length || "";
+  $("ev-zahl").title = d.ereignisse_gesamt ? `${zahl(d.ereignisse_gesamt, 0)} Ereignisse insgesamt, zusammengefasst nach Grund und Objekt` : "";
+}
+async function ereignisseLaden() {
+  S.ereigGeladen = true;
+  $("ereignisse").innerHTML = imGruppe(laedt("Ereignisse werden geladen …"));
+  try { S.ereig = await rufen("ereignisse", { stunden: Number($("ev-std").value), nur_warnungen: $("ev-warn").checked }); ereignisseZeichnen(); }
+  catch (e) { $("ereignisse").innerHTML = imGruppe(fehlerZustand("Ereignisse nicht lesbar", e, "neu-ereignisse")); }
+}
+
+// ── Altlasten ───────────────────────────────────────────────────────────────
+function altlastenStart() {
+  $("altlasten").innerHTML = `<div class="karte"><div class="kopfzeile">${kachel("archive", "akz")}<div class="zeile-text"><div class="zeile-titel">Aufräumliste für den Betreiber</div><div class="zeile-unter">Freigegebene Volumes, einzelne Pods ohne Besitzer, Dienste ohne Ziel. Das Steuerpult löscht nie etwas — das Skript führt der Betreiber selbst aus.</div></div></div>`
+    + `<button type="button" class="haupt" id="alt-laden">${symbol("list-checks")}Liste und Skript laden</button></div>`;
+}
+function altlastenZeichnen() {
+  const d = S.alt; if (!d) return;
+  const pvs = d.released_pvs || [], nackt = d.nackte_pods || [], dienste = d.dienste_ohne_endpunkte || [];
+  const max = S.altMehr ? pvs.length : 8;
+  const RUECKGABE = { Retain: "Daten bleiben liegen", Delete: "wird beim Freigeben gelöscht", Recycle: "wird geleert" };
+  const pvZeilen = pvs.slice(0, max).map((x) => `<div class="blk">${zeile({ sym: "hard-drive", ton: "grau", titel: x.war_fuer || x.name,
+    unter: [`${x.klasse || "—"} · ${RUECKGABE[x.rueckgabe] || x.rueckgabe || ""}`], ende: `<span class="zeile-ende"><span class="zahl-fett">${zahl(x.groesse_gib, 0)}</span> GiB</span>`, attr: `title="${esc(x.name)}"` })}</div>`).join("");
+  const podZeilen = nackt.map((x) => `<div class="blk">${zeile({ sym: "box", ton: "grau", titel: `${x.ns}/${x.name}`, unter: [{ h: esc(`${PHASE[x.phase] || x.phase}${x.knoten ? " · " + x.knoten : ""}`) + (x.seit ? " · " + zeit.stempel(x.seit, { seit: true }) : "") }] })}</div>`).join("");
+  const diensteZeilen = dienste.map((x) => `<div class="blk">${zeile({ sym: "plug", ton: "grau", titel: `${x.ns}/${x.name}`, marken: x.flux ? marke("Flux") : "",
+    unter: [x.selektor ? `Sucht Pods mit ${Object.entries(x.selektor).map(([a, b]) => a + "=" + b).join(", ")}` : "Ohne Auswahl"] })}</div>`).join("");
+  const keine = (text) => imGruppe(`<div class="blk">${zeile({ sym: "circle-check", ton: "gut", klein: true, titel: text })}</div>`);
+  $("altlasten").innerHTML = `<div class="kennzahlen gleich">`
+    + `<div class="kennzahl"><div class="augenbraue">${symbol("hard-drive")}Freigegebene Volumes</div><div class="zahl-gross">${zahl(d.released_gib, 0)}<small>GiB</small></div><div class="zahl-unter">${mz(pvs.length, "Volume", "Volumes")}</div></div>`
+    + `<div class="kennzahl"><div class="augenbraue">${symbol("box")}Pods ohne Besitzer</div><div class="zahl-gross">${nackt.length}</div><div class="zahl-unter">einzeln angelegt</div></div>`
+    + `<div class="kennzahl"><div class="augenbraue">${symbol("plug")}Dienste ohne Ziel</div><div class="zahl-gross">${dienste.length}</div><div class="zahl-unter">ohne Endpunkte</div></div></div>`
+    + `<div class="grp nach-zahlen"><div class="grp-kopf">Freigegebene Volumes<span class="mut">${pvs.length}</span></div>${d.released_fehler ? sperrZeile(d.released_fehler) : pvs.length ? imGruppe(pvZeilen) + (pvs.length > max ? `<div class="mehr-knopf"><button type="button" data-akt="alt-mehr">${symbol("chevron-down")}Alle ${pvs.length} zeigen</button></div>` : "") : keine("Keine freigegebenen Volumes")}</div>`
+    + `<div class="grp"><div class="grp-kopf">Pods ohne Besitzer<span class="mut">${nackt.length}</span></div>${nackt.length ? imGruppe(podZeilen) : keine("Keine einzelnen Pods")}</div>`
+    + `<div class="grp"><div class="grp-kopf">Dienste ohne Endpunkte<span class="mut">${dienste.length}</span></div>${dienste.length ? imGruppe(diensteZeilen) : keine("Keine Dienste ohne Ziel")}</div>`
+    + `<div class="karte grp nach-zahlen"><div class="kopfzeile">${kachel("terminal", "grau")}<div class="zeile-text"><div class="zeile-titel">Skript für den Betreiber</div><div class="zeile-unter">${esc(d.hinweis || "")}</div></div></div>`
+    + `<div class="knoepfe"><button type="button" id="alt-kopie">${symbol("copy")}Skript kopieren</button><button type="button" class="leise" id="alt-neu">${symbol("refresh-cw")}Neu laden</button></div>`
+    + `<details id="alt-det" class="skript"><summary>Skript ansehen</summary><pre id="alt-skript">${esc(d.skript)}</pre></details></div>`;
+}
+async function altlastenLaden() {
+  $("altlasten").innerHTML = imGruppe(laedt("Liste wird erstellt …"));
+  try { S.alt = await rufen("altlasten", {}); altlastenZeichnen(); }
+  catch (e) { $("altlasten").innerHTML = imGruppe(fehlerZustand("Altlasten nicht lesbar", e, "neu-altlasten")); }
+}
+
+// ── Aktionen: Trockenlauf zuerst, Ausführen erst danach, Grund ist Pflicht ─────
+const panelKopf = (sym, ton, titel, unter, zu = true) => `<div class="panel-kopf">${kachel(sym, ton, "klein")}<div class="panel-titel"><b>${esc(titel)}</b>${unter ? `<span>${esc(unter)}</span>` : ""}</div>`
+  + (zu ? `<button type="button" class="rund leise" data-zu aria-label="Schließen" title="Schließen">${symbol("x")}</button>` : "") + "</div>";
+const fehlerBlock = (e) => `<div class="hinweis fehler" role="alert">${symbol("circle-alert")}<span>${esc(App.fehlertext(e))}</span></div>`;
+function ergebnisText(werkzeug, e) {
+  const r = (e && e.ergebnis) || {};
+  switch (werkzeug) {
+    case "neustarten": return "Der Neustart ist angestoßen. Die Pods werden nacheinander ersetzt.";
+    case "skalieren": return r.vorher != null ? `Replikas von ${r.vorher} auf ${r.nachher} gesetzt.` : "Replikas gesetzt.";
+    case "flux_abgleichen": return (r.angestossen || []).length ? `Abgleich angestoßen: ${r.angestossen.join(" → ")}.` : "Abgleich angestoßen.";
+    case "cronjob_jetzt": return r.job ? `Job ${r.job} gestartet.` : "Job gestartet.";
+    case "knoten_absperren": return r.abgesperrt ? "Der Knoten ist abgesperrt und nimmt keine neuen Pods an." : "Der Knoten ist wieder frei.";
+    default: return "Erledigt.";
+  }
+}
+const AKTION_TITEL = { neustarten: "Neu starten", skalieren: "Skalieren", flux_abgleichen: "Flux abgleichen", cronjob_jetzt: "CronJob jetzt starten", knoten_absperren: "Knoten absperren oder freigeben" };
+async function aktion(ablage, werkzeug, args, nachher, eingebettet = false) {
+  const huelle = (kopf, inhalt, klasse = "") => eingebettet ? `<div class="plan-block">${inhalt}</div>` : `<div class="panel${klasse ? " " + klasse : ""}">${kopf}${inhalt}</div>`;
+  const kopf0 = panelKopf("flask-conical", "akz", AKTION_TITEL[werkzeug] || "Aktion", "Trockenlauf wird vorbereitet …");
+  ablage.innerHTML = huelle(kopf0, laedt("Trockenlauf wird vorbereitet …", false));
+  let r;
+  try { r = await rufen(werkzeug, args); }
+  catch (e) { ablage.innerHTML = huelle(panelKopf("circle-alert", "schlecht", AKTION_TITEL[werkzeug] || "Aktion", "Der Trockenlauf ist fehlgeschlagen"), fehlerBlock(e) + (eingebettet ? "" : "")); return; }
+  const braucht = r.braucht || [];
+  const kopf = panelKopf("flask-conical", "akz", "Trockenlauf", "Noch nichts passiert.");
+  const hinweise = r.hinweise || [];
+  const plan = `<div class="panel-plan">${esc(r.plan || "")}</div>`
+    + (hinweise.length ? `<ul class="panel-liste">${hinweise.map((x) => `<li>${symbol("info")}<span>${esc(x)}</span></li>`).join("")}</ul>` : "");
+  if (r.blockiert) {
+    ablage.innerHTML = huelle(kopf, plan + `<div class="hinweis">${symbol("lock")}<span>${esc(kurzGrund(r.blockiert))}</span></div>`);
+    return;
+  }
+  ablage.innerHTML = huelle(kopf, plan + `<div class="formular">`
+    + (braucht.length ? `<div class="bestaetigung">${braucht.map((b, i) => `<label class="wahl"><input type="checkbox" data-feld="${esc(b.feld)}" id="bw-${esc(werkzeug)}-${i}"> <span>${esc(b.text)}</span></label>`).join("")}</div>` : "")
+    + `<label class="feld">Grund (Pflicht)<input type="text" maxlength="300" placeholder="Warum soll das passieren?" autocomplete="off"></label>`
+    + knoepfe([{ text: "Abbrechen", klasse: "leise", attr: { "data-zu": true } }, { text: "Ausführen", symbol: "play", klasse: "haupt", disabled: true, attr: { "data-los": true } }], { klasse: "panel-knoepfe" }) + "</div>"
+    + `<div class="ergebnis"></div>`);
+  const panel = ablage.firstElementChild, grundEl = panel.querySelector("input[type=text]"), los = panel.querySelector("[data-los]");
+  const haken = [...panel.querySelectorAll("input[type=checkbox]")];
+  const pruefen = () => { los.disabled = !grundEl.value.trim() || haken.some((h) => !h.checked); };
+  grundEl.addEventListener("input", pruefen); haken.forEach((h) => h.addEventListener("change", pruefen));
+  los.addEventListener("click", async () => {
+    los.disabled = true; grundEl.disabled = true;
+    const extra = Object.fromEntries(haken.map((h) => [h.dataset.feld, true]));
+    const ziel = panel.querySelector(".ergebnis");
+    ziel.innerHTML = laedt("Wird ausgeführt …", false);
+    try {
+      const e = await rufen(werkzeug, { ...args, ...extra, grund: grundEl.value.trim(), ausfuehren: true });
+      panel.querySelector(".formular").hidden = true;
+      ziel.innerHTML = `<div class="hinweis gut">${symbol("circle-check")}<span><b>Erledigt.</b> ${esc(ergebnisText(werkzeug, e))}</span></div>`;
+      if (!eingebettet) {
+        panel.classList.add("fertig"); panel.querySelector(".panel-titel b").textContent = "Ausgeführt"; panel.querySelector(".panel-titel span").textContent = "Mit Grund im Protokoll festgehalten.";
+        const k = panel.querySelector(".panel-kopf > .kachel"); if (k) k.outerHTML = kachel("circle-check", "gut", "klein");
+      }
+      if (nachher) setTimeout(nachher, 2500);
+    } catch (err) { ziel.innerHTML = fehlerBlock(err); grundEl.disabled = false; pruefen(); }
+  });
+}
+function skalierenPanel(ablage, w) {
+  const hinweis = w.aktionen?.skalieren?.hinweis;
+  ablage.innerHTML = `<div class="panel">${panelKopf("scaling", "akz", "Skalieren", `${w.ns}/${w.name} läuft mit ${w.soll} ${w.soll === 1 ? "Replika" : "Replikas"}`)}`
+    + `<div class="skalieren-zeile"><label class="feld">Replikas<input type="number" min="0" max="50" value="${w.soll}"></label><button type="button" class="haupt" data-pruef>${symbol("flask-conical")}Trockenlauf</button></div>`
+    + (hinweis ? `<div class="hinweis info">${symbol("info")}<span>${esc(hinweis)}</span></div>` : "") + `<div class="unten"></div></div>`;
+  const p = ablage.firstElementChild, feld = p.querySelector("input");
+  p.querySelector("[data-pruef]").addEventListener("click", () => {
+    const vorab = p.querySelector(".hinweis.info"); if (vorab) vorab.hidden = true; // der Trockenlauf sagt es danach genauer
+    aktion(p.querySelector(".unten"), "skalieren", { ns: w.ns, name: w.name, replikas: Math.max(0, Math.min(50, parseInt(feld.value, 10) || 0)) }, ladenWorkloads, true);
+  });
+}
+async function logsPanel(ablage, ns, quelle) {
+  ablage.innerHTML = `<div class="panel neutral">${panelKopf("scroll-text", "akz", "Logs", `${ns} · wird geladen …`)}`
+    + `<div class="leiste"><select data-pod aria-label="Pod" hidden></select><select data-c aria-label="Container"></select>`
+    + `<select data-z aria-label="Zeilen"><option value="100">100 Zeilen</option><option value="200" selected>200 Zeilen</option><option value="500">500 Zeilen</option><option value="2000">2000 Zeilen</option></select>`
+    + `<label class="wahl"><input type="checkbox" data-v> Voriger Lauf</label><button type="button" class="klein" data-l>${symbol("refresh-cw")}Laden</button></div><div class="aus"></div></div>`;
+  const p = ablage.firstElementChild, aus = p.querySelector(".aus");
+  const podSel = p.querySelector("[data-pod]"), cSel = p.querySelector("[data-c]"), titel = p.querySelector(".panel-titel span");
+  async function holen(erst) {
+    aus.innerHTML = laedt("Logs werden geladen …", false);
+    const args = { ns, zeilen: Number(p.querySelector("[data-z]").value), vorher: p.querySelector("[data-v]").checked };
+    if (!erst && podSel.value) args.pod = podSel.value; else Object.assign(args, quelle);
+    if (!erst && cSel.value) args.container = cSel.value;
+    try {
+      const d = await rufen("logs", args);
+      if ((d.pods || []).length > 1 && erst) {
+        podSel.hidden = false;
+        podSel.innerHTML = d.pods.map((x) => `<option value="${esc(x.name)}"${x.name === d.pod ? " selected" : ""}${x.gesperrt ? " disabled" : ""}>${esc(x.name)} · ${esc(x.knoten)}${x.gesperrt ? " (gesperrt)" : ""}</option>`).join("");
+      }
+      if (erst || !cSel.options.length) cSel.innerHTML = [...(d.container_liste || []), ...(d.init_container || [])].map((c) => `<option${c === d.container ? " selected" : ""}>${esc(c)}</option>`).join("");
+      titel.textContent = [`${d.ns}/${d.pod || "—"}`, d.container, d.knoten, d.gekuerzt ? "gekürzt" : ""].filter(Boolean).join(" · ");
+      aus.innerHTML = d.gesperrt ? `<div class="hinweis">${symbol("lock")}<span>${esc(kurzGrund(d.gesperrt))}</span></div>`
+        : d.recht_fehlt ? `<div class="hinweis">${symbol("key-round")}<span>${esc(d.recht_fehlt)}</span></div>`
+        : d.hinweis ? `<div class="hinweis info">${symbol("info")}<span>${esc(d.hinweis)}</span></div>` : `<pre>${esc(d.text || "(leer)")}</pre>`;
+      const pre = aus.querySelector("pre"); if (pre) pre.scrollTop = pre.scrollHeight;
+    } catch (e) { aus.innerHTML = fehlerBlock(e); }
+  }
+  p.querySelector("[data-l]").addEventListener("click", () => holen(false));
+  podSel.addEventListener("change", () => { cSel.innerHTML = ""; holen(false); });
+  await holen(true);
+}
+async function raeumenPanel(ablage, knoten) {
+  ablage.innerHTML = `<div class="panel neutral">${panelKopf("brush-cleaning", "akz", "Räumen — nur Probe", `${knoten}: Es wird nichts geräumt.`)}${laedt("Probe läuft …", false)}</div>`;
+  try {
+    const d = await rufen("knoten_raeumen", { knoten });
+    const z = d.zaehlung || {};
+    const SYM = { zieht_um: ["arrow-right", "akz", "Zieht um"], kann_nicht: ["ban", "schlecht", "Kann nicht"], bleibt: ["pin", "grau", "Bleibt"] };
+    const zeilen = (d.pods || []).map((p) => { const s = SYM[p.zustand] || ["circle-help", "grau", p.zustand];
+      return zeile({ sym: s[0], ton: s[1], klein: true, titel: `${p.ns}/${p.pod}`, unter: [p.text], marken: marke(s[2], s[1] === "grau" ? "" : s[1]) }); }).join("");
+    ablage.innerHTML = `<div class="panel neutral">${panelKopf("brush-cleaning", "akz", "Räumen — nur Probe", `${knoten}: Es wird nichts geräumt.`)}`
+      + (d.gesperrt ? `<div class="hinweis">${symbol("lock")}<span>${esc(kurzGrund(d.gesperrt))}</span></div>` : "")
+      + `<div class="zaehler"><div class="akz"><b>${z.zieht_um ?? 0}</b><span>ziehen um</span></div><div class="${z.kann_nicht ? "schlecht" : ""}"><b>${z.kann_nicht ?? 0}</b><span>können nicht</span></div><div><b>${z.bleibt ?? 0}</b><span>bleiben</span></div></div>`
+      + ((d.faellt_aus || []).length ? `<div class="hinweis fehler">${symbol("circle-alert")}<span>Fiele aus: ${d.faellt_aus.map(esc).join(", ")}</span></div>` : "")
+      + (d.hinweise || []).map((h) => `<div class="hinweis info">${symbol("info")}<span>${esc(h)}</span></div>`).join("")
+      + (zeilen ? `<details><summary>${mz((d.pods || []).length, "Pod", "Pods")} ansehen</summary><div class="tabliste gruppe">${zeilen}</div></details>` : "")
+      + `</div>`;
+  } catch (e) { ablage.innerHTML = `<div class="panel neutral">${panelKopf("brush-cleaning", "schlecht", "Räumen — nur Probe", "Die Probe ist fehlgeschlagen")}${fehlerBlock(e)}</div>`; }
+}
+function finde(id) {
+  const [art, ns, ...rest] = id.split(":"); const name = rest.join(":");
+  return (S.wl?.workloads || []).find((w) => w.art === art && w.ns === ns && w.name === name);
+}
+function warumPanel(ablage, w) {
+  if (ablage.innerHTML) { ablage.innerHTML = ""; return; }
+  ablage.innerHTML = `<div class="panel neutral">${panelKopf("circle-help", "akz", "Warum läuft das hier?", `${w.ns}/${w.name} auf ${(w.knoten || []).join(", ") || "keinem Knoten"}`)}`
+    + `<ul class="panel-liste">${(w.warum_hier || []).map((x) => `<li>${symbol("corner-down-right")}<span>${esc(x)}</span></li>`).join("")}</ul>`
+    + `<dl class="kv"><dt>Darf laufen auf</dt><dd>${(w.moegliche_knoten || []).length ? w.moegliche_knoten.map((k) => marke(k)).join(" ") : "—"}</dd>`
+    + ((w.pods || []).length ? `<dt>Pods</dt><dd>${w.pods.map((p) => `${esc(p.name)} → ${esc(p.knoten || "—")}${p.neustarts ? ` (${p.neustarts}× neu gestartet)` : ""}`).join("<br>")}</dd>` : "") + `</dl></div>`;
+}
+function detailFuellen(det) {
+  const inhalt = det.querySelector(".detail-inhalt");
+  if (inhalt.firstChild) return;
+  if (det.dataset.art === "w") { const w = finde(det.dataset.id); if (w) inhalt.innerHTML = wlDetail(w); }
+  else { const [ns, ...r] = det.dataset.id.split(":"); const c = (S.wl?.cronjobs || []).find((x) => x.ns === ns && x.name === r.join(":")); if (c) inhalt.innerHTML = cjDetail(c); }
+}
+
+// ── Bedienung ───────────────────────────────────────────────────────────────
+document.body.addEventListener("click", async (ev) => {
+  const t = ev.target;
+  const kl = t.closest && t.closest(".klemme.lang");
+  if (kl && !t.closest("button")) { kl.classList.toggle("offen"); return; }
+  const tab = t.closest("[data-tab]");
+  if (tab) { tabWechseln(tab.dataset.tab); return; }
+  const zeileKnopf = t.closest("[data-toggle]");
+  if (zeileKnopf) {
+    const offen = zeileKnopf.getAttribute("aria-expanded") !== "true", det = $(zeileKnopf.getAttribute("aria-controls"));
+    zeileKnopf.setAttribute("aria-expanded", String(offen));
+    if (offen) { S.offen.add(zeileKnopf.dataset.toggle); detailFuellen(det); } else S.offen.delete(zeileKnopf.dataset.toggle);
+    det.hidden = !offen;
+    return;
+  }
+  const b = t.closest("button"); if (!b) return;
+  if (b.hasAttribute("data-zu")) { const a = b.closest(".ablage") || b.closest(".unten"); if (a) a.innerHTML = ""; return; }
+  if (b.dataset.knoten !== undefined) { S.filterKnoten = b.dataset.knoten; chipsZeichnen(); wlZeichnen(); return; }
+  if (b.id === "ev-laden") { ereignisseLaden(); return; }
+  if (b.id === "alt-laden" || b.id === "alt-neu") { altlastenLaden(); return; }
+  if (b.id === "alt-kopie") {
+    try { await navigator.clipboard.writeText(S.alt.skript); b.innerHTML = symbol("check") + "Kopiert"; }
+    catch { $("alt-det").open = true; const r = document.createRange(); r.selectNodeContents($("alt-skript")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.innerHTML = symbol("copy") + "Markiert — jetzt kopieren"; }
+    return;
+  }
+  const akt = b.dataset.akt; if (!akt) return;
+  if (akt === "zu-lage") { if (S.tab !== "ueberblick") tabWechseln("ueberblick"); $("lage").closest("section").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (akt === "zu-cron") { $("cronjobs").closest("section").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (akt === "mehr") { S.mehr = true; wlZeichnen(); return; }
+  if (akt === "alt-mehr") { S.altMehr = true; altlastenZeichnen(); return; }
+  if (akt === "absperren") return aktion($("ka-" + b.dataset.k), "knoten_absperren", { knoten: b.dataset.k, an: b.dataset.an === "true" }, () => { ladenKnoten(); ladenLage(); });
+  if (akt === "raeumen") return raeumenPanel($("ka-" + b.dataset.k), b.dataset.k);
+  if (akt === "wl-hier") { S.filterKnoten = b.dataset.k; chipsZeichnen(); wlZeichnen(); tabWechseln("workloads", true); return; }
+  if (akt === "kubelet") {
+    b.disabled = true;
+    try {
+      const d = await rufen("knoten", { knoten: b.dataset.k, mit_kubelet: true, voll: true });
+      const neu = (d.knoten || []).find((k) => k.name === b.dataset.k) || (d.knoten || [])[0];
+      if (neu && S.knoten) { S.knoten.knoten = S.knoten.knoten.map((k) => k.name === neu.name ? neu : k); S.offen.add("k:" + neu.name); knotenZeichnen(); }
+    } catch (e) { b.insertAdjacentHTML("afterend", `<span class="fehler"> ${esc(App.fehlertext(e))}</span>`); }
+    return;
+  }
+  if (akt === "logs-lage") return logsPanel($(b.dataset.ablage), b.dataset.ns, b.dataset.deploy ? { deploy: b.dataset.deploy } : { pod: b.dataset.pod });
+  if (akt === "cronjob") return aktion($(`wa-cj:${b.dataset.ns}:${b.dataset.n}`), "cronjob_jetzt", { ns: b.dataset.ns, name: b.dataset.n }, ladenWorkloads);
+  if (akt === "abgleichen") {
+    const [ns, name] = $("flux-ks").value.split("/");
+    return aktion($("fa"), "flux_abgleichen", { kustomization: name, ns, mit_quelle: $("flux-quelle").checked }, ladenFlux);
+  }
+  const w = b.dataset.id ? finde(b.dataset.id) : null; if (!w) return;
+  const ablage = $("wa-" + b.dataset.id);
+  if (akt === "neustarten") return aktion(ablage, "neustarten", { ns: w.ns, art: w.art, name: w.name }, () => { ladenWorkloads(); ladenLage(); });
+  if (akt === "skalieren") return skalierenPanel(ablage, w);
+  if (akt === "logs") {
+    const frei = (w.pods || []).find((p) => !p.gesperrt);
+    return logsPanel(ablage, w.ns, w.art === "deploy" ? { deploy: w.name } : { pod: (frei || w.pods[0] || {}).name });
+  }
+  if (akt === "warum") return warumPanel(ablage, w);
+});
+document.body.addEventListener("toggle", (ev) => {
+  const d = ev.target; if (d.tagName !== "DETAILS" || !d.dataset.k) return;
+  d.open ? S.offen.add("k:" + d.dataset.k) : S.offen.delete("k:" + d.dataset.k);
+}, true);
+document.getElementById("reiter").addEventListener("keydown", (ev) => {
+  if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+  const tabs = [...document.querySelectorAll("#reiter [data-tab]")], i = tabs.findIndex((x) => x.dataset.tab === S.tab);
+  const n = tabs[(i + (ev.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+  tabWechseln(n.dataset.tab); n.focus();
+});
+for (const id of ["wl-ns", "wl-q", "wl-probleme"]) $(id).addEventListener("input", wlZeichnen);
+for (const id of ["cj-q", "cj-alle"]) $(id).addEventListener("input", cjZeichnen);
+for (const id of ["ev-std", "ev-warn"]) $(id).addEventListener("change", () => { if (S.ereigGeladen) ereignisseLaden(); });
+App.bei("filter-weg", () => { S.filterKnoten = ""; $("wl-q").value = ""; $("wl-ns").value = ""; $("wl-probleme").checked = false; chipsZeichnen(); wlZeichnen(); });
+App.bei("neu-knoten", () => ladenKnoten());
+App.bei("neu-lage", () => ladenLage());
+App.bei("neu-wl", () => ladenWorkloads());
+App.bei("neu-flux", () => ladenFlux());
+App.bei("neu-ereignisse", () => ereignisseLaden());
+App.bei("neu-altlasten", () => altlastenLaden());
+// Wer lange wartet, bekommt gesagt, dass es länger dauert — der Platzhalter bleibt trotzdem stehen.
+for (const el of document.querySelectorAll(".laedt")) { el.dataset.seit = String(Date.now()); el.dataset.text = el.textContent; }
+setInterval(() => {
+  for (const el of document.querySelectorAll(".laedt[data-seit]")) {
+    if (Date.now() - Number(el.dataset.seit) > 15000 && !el.dataset.lang) { el.dataset.lang = "1"; el.textContent = `${el.dataset.text} Das dauert länger als sonst.`; }
+  }
+}, 3000);
+
+// ── Laden ───────────────────────────────────────────────────────────────────
+const rufen = async (name, args) => {
+  const r = await App.werkzeug("cluster__" + name, args || {});
+  if (r && r.isError) throw new Error(App.fehlertext(((r.content || [])[0] || {}).text || "Fehler"));
+  return App.daten(r);
+};
+function geladen(was) { S.veraltet.delete(was); S.stand = Date.now(); kopfZeichnen(); }
+function misslungen(was, e, wo, titel, aktion) {
+  if (S[was]) { S.veraltet.add(was); kopfZeichnen(); return; }
+  const titel_ = [].concat(titel);
+  [].concat(wo).forEach((id, i) => {
+    const t = titel_[i] ?? titel_[0];
+    $(id).innerHTML = id === "cronjobs" || id === "workloads" ? imGruppe(fehlerZustand(t, e, aktion)) : fehlerZustand(t, e, aktion);
+  });
+}
+async function ladenKnoten() {
+  try { S.knoten = await rufen("knoten", { voll: true }); if (!S.knoten || !Array.isArray(S.knoten.knoten)) throw new Error("Die Antwort war leer."); knotenZeichnen(); geladen("knoten"); }
+  catch (e) { misslungen("knoten", e, "knoten", "Knoten nicht lesbar", "neu-knoten"); }
+}
+async function ladenLage() {
+  try { const d = await rufen("lage", {}); if (!d || !Array.isArray(d.gruppen)) throw new Error("Die Antwort war leer."); S.lage = d; lageSatzZeichnen(); lageZeichnen(); geladen("lage"); }
+  catch (e) {
+    if (S.lage) { S.veraltet.add("lage"); kopfZeichnen(); return; }
+    lageFehler(e); $("lage").innerHTML = fehlerZustand("Lage nicht lesbar", e, "neu-lage");
+  }
+}
+async function ladenWorkloads() {
+  try { const d = await rufen("workloads", {}); if (!d || !Array.isArray(d.workloads)) throw new Error("Die Antwort war leer."); S.wl = d; wlZeichnen(); geladen("wl"); }
+  catch (e) { misslungen("wl", e, ["workloads", "cronjobs"], ["Workloads nicht lesbar", "CronJobs nicht lesbar"], "neu-wl"); }
+}
+async function ladenFlux() {
+  try { const d = await rufen("flux_zustand", {}); if (!d || !d.arten) throw new Error("Die Antwort war leer."); S.flux = d; fluxZeichnen(); geladen("flux"); }
+  catch (e) { misslungen("flux", e, "flux", "Flux nicht lesbar", "neu-flux"); }
+}
+async function allesLaden(ohne) {
+  $("neu").disabled = true;
+  await Promise.all([ohne === "knoten" ? null : ladenKnoten(), ohne === "lage" ? null : ladenLage(),
+    ohne === "workloads" ? null : ladenWorkloads(), ohne === "flux" ? null : ladenFlux(),
+    S.ereigGeladen && ohne !== "ereignisse" ? ereignisseLaden() : null, S.alt && ohne !== "altlasten" ? altlastenLaden() : null]);
+  $("neu").disabled = false;
+}
+$("neu").addEventListener("click", () => allesLaden());
+
+// Ein Ergebnis vom Host (Werkzeug-Aufruf) — erkennen, zeichnen, den Rest selbst holen.
+// Eine gefilterte Antwort (ein Knoten, ein Namespace …) zeigt nicht alles; dann wird vollständig nachgeladen.
+function uebernehmen(d) {
+  if (!d) return null;
+  if (Array.isArray(d.knoten) && d.quellen) {
+    if (d.knapp || d.knoten.length < 2) return null; // knappe Ansicht (KI-Aufruf) oder ein einzelner Knoten: allesLaden holt die Vollform
+    S.knoten = d; knotenZeichnen(); geladen("knoten"); return "knoten";
+  }
+  if (d.zustand && Array.isArray(d.gruppen)) { S.lage = d; lageSatzZeichnen(); lageZeichnen(); geladen("lage"); return "lage"; }
+  if (Array.isArray(d.workloads)) {
+    const f = d.filter || {};
+    if (f.ns || f.knoten || f.nur_probleme) { // gefilterte Antwort: die Filter übernehmen, die vollständige Liste holt allesLaden nach
+      S.start = { ns: f.ns || "", knoten: f.knoten || "", probleme: !!f.nur_probleme };
+      tabWechseln("workloads"); return null;
+    }
+    S.wl = d; wlZeichnen(); geladen("wl"); tabWechseln("workloads"); return "workloads";
+  }
+  if (d.arten) { S.flux = d; fluxZeichnen(); geladen("flux"); tabWechseln("flux"); return "flux"; }
+  // Wer die App über die Ereignisse oder die Altlasten öffnet, sieht dort gleich das Ergebnis.
+  if (Array.isArray(d.gruppen) && "stunden" in d) {
+    S.ereig = d; S.ereigGeladen = true; $("ev-std").value = String(d.stunden); $("ev-warn").checked = !!d.nur_warnungen;
+    ereignisseZeichnen(); tabWechseln("mehr"); return "ereignisse";
+  }
+  if (Array.isArray(d.released_pvs)) { S.alt = d; altlastenZeichnen(); S.ereigGeladen = true; tabWechseln("mehr"); return "altlasten"; } // die Ereignisse holt allesLaden gleich mit
+  return null;
+}
+let bekommen = false;
+App.auf("ui/notifications/tool-input", (p) => {
+  const a = (p && p.arguments) || {};
+  if (typeof a.knoten === "string" && a.knoten && !a.mit_kubelet) S.fokus = a.knoten; // „zeig mir knoten-a“: Überblick, dort springen
+});
+App.auf("ui/notifications/tool-result", (r) => {
+  if (bekommen) return; bekommen = true;
+  const art = uebernehmen(App.daten(r));
+  allesLaden(art);
+});
+altlastenStart();
+App.start("fyos-steuerpult").then(() => { setTimeout(() => { if (!bekommen) { bekommen = true; allesLaden(); } }, 1500); }).catch(() => {});
+</script>
+</body>
+</html>

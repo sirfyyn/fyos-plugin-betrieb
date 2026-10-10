@@ -1,0 +1,111 @@
+# Netzregeln des Betriebsgraphen. Nur nötig, wo NetworkPolicies den Verkehr sperren (Eingang am Postgres oder Ausgang
+# der Pods); ohne Sperre diese Datei aus kustomization.yaml herausnehmen.
+#
+# BEISPIEL: die Platzhalter ersetzen
+#   <NAMESPACE>     Namensraum von Einspeiser und Postgres (liegt der Postgres woanders, die Regeln dort anlegen und
+#                   `namespaceSelector` ergänzen)
+#   <POSTGRES_APP>  Wert des Labels `app` an den Pods des Postgres, in dem die Datenbank fyos_graph liegt
+#   <HUB_APP>       Wert des Labels `app` an den Pods des MCP-Hubs (das Plugin `graph` liest dort die Datenbank)
+#
+# Zugriff auf Postgres braucht in Clustern mit gesperrtem Ausgang BEIDE Seiten: Eingang am Ziel und Ausgang an der
+# Quelle. Netzregeln addieren sich; je Regel ein eigenes Objekt hält sie auch bei Netz-Plugins lesbar, die nur den ersten
+# `from`-Block eines Objekts auswerten.
+#
+#   graph-einspeisen (CronJob)   Eingang am Postgres: unten (1)   Ausgang: unten (3)
+#   MCP-Hub (Plugin graph)       Eingang am Postgres: unten (2)   Ausgang: unten (4)
+# Rückweg: Datei entfernen (dann sind Einspeiser und Plugin vom Graphen abgeschnitten, sonst nichts).
+---
+# (1) Der Einspeiser darf den Postgres erreichen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: graph-einspeisen-postgres-ingress
+  namespace: <NAMESPACE>
+spec:
+  podSelector:
+    matchLabels:
+      app: <POSTGRES_APP>
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: graph-einspeisen
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# (2) Der Hub darf den Postgres erreichen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: graph-hub-postgres-ingress
+  namespace: <NAMESPACE>
+spec:
+  podSelector:
+    matchLabels:
+      app: <POSTGRES_APP>
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: <HUB_APP>
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# (3) Ausgang des Einspeisers: Namensauflösung, Postgres, Kubernetes-API. Der API-Server hat je nach Verteilung eine
+# Adresse außerhalb des Pod-Netzes (`kubectl get endpoints kubernetes`); die Regel erlaubt dafür die Ports 443 und 6443
+# an jede Adresse und lässt sich mit der Adresse des API-Servers enger fassen. Quellen mit Diensten im Cluster (Redis für
+# das Bestandsbuch, Vorgangs-Dienst) brauchen eigene Ausgangsregeln.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: graph-einspeisen-egress
+  namespace: <NAMESPACE>
+spec:
+  podSelector:
+    matchLabels:
+      app: graph-einspeisen
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: <POSTGRES_APP>
+      ports:
+        - {port: 5432, protocol: TCP}
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {port: 443, protocol: TCP}
+        - {port: 6443, protocol: TCP}
+---
+# (4) Ausgang des Hubs zum Postgres (zusätzlich zu den Regeln, die der Hub schon hat).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: graph-hub-postgres-egress
+  namespace: <NAMESPACE>
+spec:
+  podSelector:
+    matchLabels:
+      app: <HUB_APP>
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: <POSTGRES_APP>
+      ports:
+        - port: 5432
+          protocol: TCP

@@ -1,0 +1,11 @@
+# Betriebsgraph: CronJob des Einspeisers, Leserechte und Netzregeln. BEISPIEL: erst die Platzhalter in den drei Dateien
+# ersetzen (<NAMESPACE>, <IMAGE>, <GRAPH_DB_SECRET>, <POSTGRES_APP>, <HUB_APP>), dann mit `kubectl apply -k deploy/graph`
+# anwenden. Das Secret mit den Datenbank-Adressen und die Datenbank selbst legt der Betreiber vorher an (README,
+# Abschnitt „Betriebsgraph einrichten"); es gehört nicht in diese Dateien.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rbac.yaml
+  - einspeisen-cronjob.yaml
+  - networkpolicy.yaml # nur nötig, wo NetworkPolicies den Verkehr sperren

@@ -1,0 +1,67 @@
+[build-system]
+# 77: erste Fassung mit Lizenz als SPDX-Ausdruck (PEP 639).
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fyos-plugin-betrieb"
+version = "0.3.2"
+description = "FYOS-Hub-Plugins für den Betrieb: Lagebild, Cluster-Steuerpult, Repos, Kubernetes, Betrieb, Arbeit, Git, TrueNAS, Omada, Pipelines, Betriebsgraph (Basis der weiteren Plugin-Repos)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "sirfyyn and FYOS CONTRIBUTORS" }]  # sauber: ok
+dependencies = ["fyos-hub>=0.1.1.dev0", "kubernetes>=30", "pyyaml>=6", "httpx>=0.27", "redis>=5.0"]
+
+[project.optional-dependencies]
+# Betriebsgraph (Plugin `graph`, Einspeiser `fyos-graph-einspeisen`): der Postgres-Treiber. Ohne ihn lädt das Plugin
+# und meldet sich ungesund. Die Datenbank-Tests laufen nur mit GRAPH_TEST_DB_URL (dann `pip install -e ".[test,graph]"`).
+graph = ["psycopg[binary]>=3.1"]
+test = ["pytest>=8", "pytest-asyncio>=0.23", "fakeredis>=2.20"]
+
+# Der Einspeiser des Betriebsgraphen (CronJob oder von Hand): `fyos-graph-einspeisen --help`.
+[project.scripts]
+fyos-graph-einspeisen = "fyos_plugin_betrieb.graph_einspeisen.einspeisen:main"
+
+# Der Hub lädt jedes Plugin von selbst, sobald das Paket installiert ist (Gruppe `mcp_hub.plugins`).
+# Der Name ist der `name` der Klasse, damit die Werkzeug-IDs (lage.ampel, cluster.knoten, …) gleich bleiben.
+[project.entry-points."mcp_hub.plugins"]
+lage = "fyos_plugin_betrieb.lage:LagePlugin"
+cluster = "fyos_plugin_betrieb.cluster:ClusterPlugin"
+k8s = "fyos_plugin_betrieb.k8s_core:K8sCorePlugin"
+betrieb = "fyos_plugin_betrieb.betrieb:BetriebPlugin"
+arbeit = "fyos_plugin_betrieb.arbeit:ArbeitPlugin"
+git = "fyos_plugin_betrieb.git_unified:GitUnifiedPlugin"
+truenas = "fyos_plugin_betrieb.truenas_proxy:TrueNASProxyPlugin"
+omada = "fyos_plugin_betrieb.omada_proxy:OmadaProxyPlugin"
+kerberuz = "fyos_plugin_betrieb.kerberuz_proxy:KerberuzProxyPlugin"
+pipelines = "fyos_plugin_betrieb.pipelines:PipelinesPlugin"
+repomix = "fyos_plugin_betrieb.repomix:RepomixPlugin"
+cli_anything = "fyos_plugin_betrieb.cli_anything:CliAnythingPlugin"
+fle = "fyos_plugin_betrieb.fle_apps:FleAppsPlugin"
+grow = "fyos_plugin_betrieb.grow:GrowPlugin"
+repos = "fyos_plugin_betrieb.repos:ReposPlugin"
+graph = "fyos_plugin_betrieb.graph:GraphPlugin"
+
+# Der Installer findet den Katalogeintrag (Gruppe `fyos.katalog`); die Funktion liefert den Pfad der Datei.
+[project.entry-points."fyos.katalog"]
+betrieb = "fyos_plugin_betrieb:katalog_pfad"
+
+# Das Hub-Plugin `skills` liest die Skills aus dem Unterordner `skills/` dieses Pakets (Gruppe `fyos.skills`).
+[project.entry-points."fyos.skills"]
+betrieb = "fyos_plugin_betrieb"
+
+[tool.setuptools]
+packages = [
+    "fyos_plugin_betrieb",
+    "fyos_plugin_betrieb.graph_einspeisen",
+    "fyos_plugin_betrieb.graph_einspeisen.quellen",
+]
+
+[tool.setuptools.package-data]
+fyos_plugin_betrieb = ["ui/*", "daten/*", "bilder/*", "fyos-katalog.yaml", "skills/*/*.md", "skills/*/references/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"

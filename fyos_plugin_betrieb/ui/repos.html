@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repos</title>
+<style>/*STIL*/
+  .liste-kopf { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 0 0 12px; }
+  .liste-kopf input[type="search"] { flex: 1 1 200px; min-width: 0; }
+  .zahlen { margin: 0 0 14px; }
+  .zahlen:empty { display: none; }
+  .repo-name { font-weight: var(--font-weight-semibold); }
+  .marken { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
+  .zeile.oben > .punkt { margin-top: 6px; }
+  .fuss { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 10px 2px 0; }
+  .fuss:empty { display: none; }
+  .detail-kopf { display: grid; gap: 8px; margin: 0 0 14px; }
+  .detail-kopf h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; }
+  .detail-kopf p { margin: 0; color: var(--mut); overflow-wrap: anywhere; }
+  .detail-kopf .knoepfe { margin: 2px 0 0; }
+  #reiter { margin: 0 0 12px; }
+  #reiter:empty { display: none; }
+  .tab-zahl { margin-left: 4px; color: var(--mut); font-variant-numeric: tabular-nums; }
+  .versionen { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 3px; font-size: 12px; color: var(--mut); }
+  /* Am Handy passen die fünf Reiter nur ohne Zahlen nebeneinander (sonst liefe „Commits“ links aus dem Bild) */
+  @media (max-width: 460px) { #reiter .tab-zahl { display: none; } #reiter button { padding: 0 10px; } }
+</style>
+</head>
+<body>
+<!--KOPF-->
+  <button id="zurueck" class="rund" title="Zurück zur Übersicht" aria-label="Zurück zur Übersicht" hidden><svg class="ico" data-symbol="arrow-left"></svg></button>
+  <button id="neu" class="rund drehen" title="Aktualisieren" aria-label="Aktualisieren"><svg class="ico" data-symbol="refresh-cw"></svg></button>
+<!--/KOPF-->
+<main>
+  <section id="liste" aria-label="Alle Repositories">
+    <div class="liste-kopf" id="liste-kopf">
+      <input id="suche" type="search" placeholder="Repo suchen" aria-label="Repo suchen" autocomplete="off" enterkeyhint="search">
+      <button type="button" id="probleme" class="chip" aria-pressed="false">Nur rote CI</button>
+    </div>
+    <div id="zahlen" class="kennzahlen zahlen"></div>
+    <div id="repos"><div class="laedt">Lädt …</div></div>
+    <div id="liste-fuss" class="fuss"></div>
+  </section>
+  <section id="detail" aria-label="Ein Repository" hidden>
+    <div id="detail-kopf" class="detail-kopf"></div>
+    <div id="reiter" class="reiter" role="tablist" aria-label="Bereiche"></div>
+    <div id="detail-inhalt"></div>
+    <div id="detail-fuss" class="fuss"></div>
+  </section>
+</main>
+<script>
+/*BRUECKE*/
+const $ = (id) => document.getElementById(id);
+const { esc, symbol, zustand, satz, marke } = App;
+// Werkzeugnamen der App: <plugin>__<werkzeug>
+const rufen = (name, args) => App.rufen("repos__" + name, args);
+
+// Frische: ab so vielen Minuten ohne neue Daten steht „veraltet“ am Stempel (das Plugin fragt Gitea höchstens jede Minute).
+const SCHWELLE_MIN = 5;
+const REITER = [["commits", "Commits"], ["laeufe", "Läufe"], ["zweige", "Zweige"], ["prs", "PRs"], ["pakete", "Pakete"]];
+
+let liste = null;            // letzte Übersicht (Werkzeugergebnis)
+let offen = null;            // Name des Repos in der Detailansicht, sonst null
+const details = new Map();   // Repo → letztes Detail
+let reiter = "commits";
+let bekommen = false;
+
+// ── Bausteine ───────────────────────────────────────────────────────────
+const TON = { gruen: "gut", rot: "schlecht", gelb: "warn" };
+const LAUF = { gruen: "CI grün", rot: "CI rot", gelb: "CI läuft", grau: "abgebrochen" };
+function punkt(ampel, titel) {
+  const klasse = ampel === "unbekannt" ? "weg" : (TON[ampel] || "");
+  return `<span class="punkt${klasse ? " " + klasse : ""}"${titel ? ` title="${esc(titel)}"` : ""} aria-hidden="true"></span>`;
+}
+// Hat der letzte Commit keinen Status (etwa „[skip ci]“), kommt die Ampel aus den letzten Läufen auf dem Zweig.
+const ciTitel = (ci) => (ci ? ci.text + (ci.aus_laeufen ? " (aus den letzten Läufen; der letzte Commit hat keinen Status)" : "") : "CI unbekannt");
+function ampelMarke(ci) {
+  const a = ci ? ci.ampel : "unbekannt";
+  const sym = a === "gruen" ? "circle-check" : a === "rot" ? "circle-x" : a === "gelb" ? "loader-circle" : "circle-dashed";
+  const m = marke(ci ? ci.text : "CI unbekannt", TON[a] || "", sym);
+  return ci && ci.aus_laeufen ? `<span title="${esc(ciTitel(ci))}">${m}</span>` : m;
+}
+const sichtbarkeit = (r) => (r.privat ? marke("privat", "", "lock") : marke("öffentlich", "akz", "globe"))
+  + (r.archiviert ? marke("archiviert", "warn", "archive") : "");
+const prMarke = (n) => (n ? marke(n === 1 ? "1 PR" : `${n} PRs`, "akz", "git-pull-request") : "");
+const kurz = (sha) => (sha ? `<code>${esc(String(sha).slice(0, 7))}</code>` : "");
+// Zahl und Einheit bleiben zusammen (geschütztes Leerzeichen), umbrechen darf die Zeile nur an den Punkten dazwischen.
+function dauer(s) {
+  if (s == null) return "";
+  return s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : App.zeit.dauer(Math.round(s / 60)).replace(" ", " ");
+}
+function versionMarken(r, max) {
+  const m = [];
+  for (const p of r.pakete || []) m.push(marke(`${p.name} ${p.version}`, "", "package"));
+  for (const b of r.bilder || []) m.push(marke(`${b.kurz_name} ${b.tag}`, b.aktuell ? "akz" : "", "container"));
+  const mehr = (r.bilder_gesamt || 0) - (r.bilder || []).length + Math.max(0, m.length - max);
+  return m.slice(0, max).join("") + (mehr > 0 ? marke(`+${mehr}`, "") : "");
+}
+function kennzahl(titel, wert, ton, sym) {
+  return `<div class="kennzahl"><span class="augenbraue">${symbol(sym)}${esc(titel)}</span>`
+    + `<span class="zahl-gross${ton ? " " + ton : ""}">${esc(String(wert ?? 0))}</span></div>`;
+}
+const fehlerKarte = (titel, text) => '<div class="karte">' + zustand({ symbol: "circle-alert", ton: "schlecht", titel, text, klein: true }) + "</div>";
+const leerKarte = (sym, titel, text) => '<div class="karte">' + zustand({ symbol: sym, titel, text, klein: true }) + "</div>";
+// Eine Zeile, die beim Antippen die Seite in Gitea öffnet (nur mit Adresse; sonst eine stille Zeile)
+function zeileHtml(url, inhalt, klasse) {
+  return url
+    ? `<button type="button" class="zeile oben${klasse ? " " + klasse : ""}" data-aktion="gitea" data-url="${esc(url)}">${inhalt}<span class="weiter">${symbol("square-arrow-out-up-right")}</span></button>`
+    : `<div class="zeile oben${klasse ? " " + klasse : ""}">${inhalt}</div>`;
+}
+
+// ── Übersicht ───────────────────────────────────────────────────────────
+function repoZeile(r, maxMarken) {
+  const c = r.commit;
+  const unter = c
+    ? `${esc(c.titel)} · ${esc(c.autor || "?")} · ${App.zeit.stempel(c.zeit)}`
+    : esc(r.leer ? "Noch keine Commits" : (r.fehlt && r.fehlt.commit) ? "Letzter Commit nicht lesbar" : "");
+  const marken = marke(r.standardzweig, "", "git-branch") + sichtbarkeit(r) + ampelMarke(r.ci) + prMarke(r.offene_prs) + versionMarken(r, maxMarken);
+  return `<button type="button" class="zeile oben" data-aktion="oeffnen" data-repo="${esc(r.name)}">`
+    + punkt(r.ci && r.ci.ampel, ciTitel(r.ci))
+    + `<span class="zeile-text"><span class="zeile-titel"><span class="repo-name">${esc(r.name)}</span></span>`
+    + (unter ? `<span class="zeile-unter">${unter}</span>` : "")
+    + `<span class="marken">${marken}</span></span>`
+    + `<span class="weiter">${symbol("chevron-right")}</span></button>`;
+}
+
+function filterAn() { return $("probleme").getAttribute("aria-pressed") === "true"; }
+
+function zeichneListe() {
+  const d = liste;
+  if (!d) return;
+  const stufe = App.stufe;
+  $("liste-kopf").hidden = stufe === "blick";
+  if (!d.quelle_ok) {
+    satz(d.satz || "Die Repos sind gerade nicht abrufbar.", "schlecht");
+    $("zahlen").innerHTML = "";
+    $("repos").innerHTML = fehlerKarte("Nicht abrufbar", d.grund || "");
+    $("liste-fuss").innerHTML = App.frische(d.stand, { schwelleMin: SCHWELLE_MIN });
+    return;
+  }
+  const z = d.zaehlung || {};
+  satz(d.satz, z.rot ? "schlecht" : z.gelb ? "warn" : z.gruen ? "gut" : "");
+  // Im Blick nur, was zählt: rote CI und offene PRs (die Zahl der Repos steht im Satz)
+  $("zahlen").innerHTML = stufe === "kompakt" ? "" : [
+    stufe === "blick" ? "" : kennzahl("Repos", z.repos, "", "git-branch"),
+    kennzahl("CI rot", z.rot, z.rot ? "schlecht" : "gut", "circle-x"),
+    stufe === "blick" ? "" : kennzahl("CI läuft", z.gelb, z.gelb ? "warn" : "", "loader-circle"),
+    kennzahl("Offene PRs", z.prs, "", "git-pull-request"),
+  ].join("");
+  const stempel = App.frische(d.stand, { schwelleMin: SCHWELLE_MIN });
+  if (stufe === "blick") { $("repos").innerHTML = ""; $("liste-fuss").innerHTML = stempel; return; }
+  const q = $("suche").value.trim().toLowerCase();
+  const nurRot = filterAn();
+  const passend = d.repos.filter((r) =>
+    (!q || r.name.toLowerCase().includes(q) || (r.beschreibung || "").toLowerCase().includes(q))
+    && (!nurRot || r.ci.ampel === "rot" || r.ci.ampel === "unbekannt"));
+  $("repos").innerHTML = passend.length
+    ? `<div class="gruppe">${passend.map((r) => repoZeile(r, stufe === "kompakt" ? 1 : 3)).join("")}</div>`
+    : (q || nurRot)
+      ? leerKarte("search", "Nichts gefunden", nurRot && !q ? "Kein Repo hat gerade eine rote CI." : "Kein Repo passt zur Suche.")
+      : leerKarte("git-branch", "Keine Repos", d.satz || "");
+  $("liste-fuss").innerHTML = stempel
+    + (d.pakete_ok === false && d.pakete_grund ? `<span class="mut">${esc(d.pakete_grund)}</span>` : "");
+}
+
+function uebernehmeListe(d) {
+  if (!d || !Array.isArray(d.repos) && d.quelle_ok !== false) return;
+  // Scheitert ein Neuladen, bleiben die alten Daten mit ihrem alten Stempel stehen; der Satz sagt, was los ist.
+  if (d.quelle_ok === false && liste && liste.quelle_ok) {
+    if (!offen) satz("Aktualisieren hat nicht geklappt: " + (d.grund || d.satz || ""), "schlecht");
+    return;
+  }
+  // Ein gefiltertes Ergebnis (z. B. vom Agenten) übernimmt Suche und Filter, die volle Liste kommt gleich nach.
+  const gefiltert = !!(d.filter || d.nur_probleme);
+  if (d.filter && !$("suche").value) $("suche").value = d.filter;
+  if (d.nur_probleme) $("probleme").setAttribute("aria-pressed", "true");
+  if (!gefiltert || !liste) liste = d;
+  if (!offen) zeichneListe();
+  if (gefiltert) laden();
+}
+
+async function laden() {
+  $("neu").disabled = true;
+  try { uebernehmeListe(await rufen("uebersicht")); bekommen = true; }
+  catch (e) {
+    if (liste && liste.quelle_ok) { if (!offen) satz("Aktualisieren hat nicht geklappt: " + App.fehlertext(e), "schlecht"); }
+    else $("repos").innerHTML = fehlerKarte("Nicht abrufbar", App.fehlertext(e));
+  } finally { $("neu").disabled = false; }
+}
+
+// ── Detail ──────────────────────────────────────────────────────────────
+function zeigeAnsicht() {
+  $("liste").hidden = !!offen;
+  $("detail").hidden = !offen;
+  $("zurueck").hidden = !offen;
+}
+
+function inhaltCommits(d) {
+  if (!d.commits.length) return leerKarte("git-commit-horizontal", "Keine Commits", d.repo.leer ? "Das Repo ist leer." : "");
+  return `<div class="gruppe">${d.commits.map((c) => zeileHtml(c.url,
+    (c.ci ? punkt(c.ci, LAUF[c.ci] || "") : punkt("", "ohne CI-Lauf"))
+    + `<span class="zeile-text"><span class="zeile-titel">${esc(c.titel)}</span>`
+    + `<span class="zeile-unter">${kurz(c.sha)} · ${esc(c.autor || "?")} · ${App.zeit.stempel(c.zeit)}</span></span>`)).join("")}</div>`;
+}
+function inhaltLaeufe(d) {
+  if (!d.laeufe.length) return leerKarte("workflow", "Keine Läufe", "Für dieses Repo gibt es keine CI-Läufe (oder Actions sind aus).");
+  return `<div class="gruppe">${d.laeufe.map((l) => zeileHtml(l.url,
+    punkt(l.ampel, l.text)
+    + `<span class="zeile-text"><span class="zeile-titel">${esc(l.titel || l.workflow)}</span>`
+    + `<span class="zeile-unter">${esc(l.workflow)} · ${esc(l.ref)} · ${esc(l.ereignis)} · ${kurz(l.sha)}`
+    + ` · ${l.start ? App.zeit.stempel(l.start) : "nicht gestartet"}${l.dauer_s != null ? " · " + esc(dauer(l.dauer_s)) : ""}</span></span>`
+    + `<span class="zeile-ende">${marke(l.text, TON[l.ampel] || "")}</span>`)).join("")}</div>`;
+}
+function inhaltZweige(d) {
+  if (!d.zweige.length) return leerKarte("git-branch", "Keine Zweige", "");
+  const mehr = d.zweige_gesamt > d.zweige.length ? `<p class="fussnote">${esc(`${d.zweige.length} von ${d.zweige_gesamt} Zweigen, zuletzt bewegte zuerst.`)}</p>` : "";
+  return `<div class="gruppe">${d.zweige.map((z) => zeileHtml(z.commit && z.commit.url,
+    `<span class="zeile-text"><span class="zeile-titel">${esc(z.name)}`
+    + `${z.standard ? marke("Standard", "akz") : ""}${z.geschuetzt ? marke("geschützt", "", "lock") : ""}</span>`
+    + (z.commit ? `<span class="zeile-unter">${esc(z.commit.titel)} · ${kurz(z.commit.sha)} · ${App.zeit.stempel(z.commit.zeit)}</span>` : "")
+    + "</span>")).join("")}</div>${mehr}`;
+}
+function inhaltPrs(d) {
+  if (!d.prs.length) return leerKarte("git-pull-request", "Keine offenen PRs", "");
+  return `<div class="gruppe">${d.prs.map((p) => zeileHtml(p.url,
+    `<span class="zeile-text"><span class="zeile-titel">#${esc(p.nummer)} ${esc(p.titel)}`
+    + `${p.entwurf ? marke("Entwurf", "") : ""}${p.mergebar === false ? marke("Konflikt", "schlecht") : ""}`
+    + `${(p.labels || []).map((l) => marke(l, "")).join("")}</span>`
+    + `<span class="zeile-unter">${p.zweig_geloescht ? "Zweig gelöscht" : esc(p.von)} → ${esc(p.nach)} · ${esc(p.autor)} · ${App.zeit.stempel(p.aktualisiert)}</span></span>`)).join("")}</div>`;
+}
+function inhaltPakete(d) {
+  const zeilen = [];
+  for (const p of d.pakete) {
+    zeilen.push(zeileHtml(p.url, `<span class="zeile-text"><span class="zeile-titel">${symbol("package")}${esc(p.name)}${marke(p.version, "akz")}</span>`
+      + `<span class="zeile-unter">PyPI · ${App.zeit.stempel(p.zeit)} · ${esc(p.anzahl === 1 ? "1 Version" : `${p.anzahl} Versionen`)}</span>`
+      + `<span class="versionen">${p.versionen.slice(1).map((v) => `<span>${esc(v.version)}</span>`).join("")}</span></span>`));
+  }
+  for (const b of d.bilder) {
+    zeilen.push(zeileHtml(b.url, `<span class="zeile-text"><span class="zeile-titel">${symbol("container")}${esc(b.kurz_name)}${b.commit ? kurz(b.commit) : marke(b.tag, "")}`
+      + `${b.aktuell ? marke("= " + d.repo.standardzweig, "akz") : ""}${(b.tags || []).map((t) => marke(t, "")).join("")}</span>`
+      + `<span class="zeile-unter">Bild ${esc(b.name)} · ${App.zeit.stempel(b.zeit)}</span>`
+      + `<span class="versionen">${b.versionen.slice(1).map((v) => `<span>${esc(v.version)}</span>`).join("")}</span></span>`));
+  }
+  if (!zeilen.length) {
+    return leerKarte("package", "Keine Pakete", d.pakete_ok === false ? (d.pakete_grund || "") : "Zu diesem Repo gibt es weder PyPI-Pakete noch Bilder.");
+  }
+  return `<div class="gruppe">${zeilen.join("")}</div>`
+    + (d.bilder_hinweis ? `<p class="fussnote">${esc(d.bilder_hinweis)}</p>` : "");
+}
+
+function zeichneDetail(d) {
+  if (!d || !offen) return;
+  if (!d.quelle_ok) {
+    satz(d.satz || "Nicht abrufbar.", "schlecht");
+    $("detail-kopf").innerHTML = `<h2>${esc((d.repo && d.repo.name) || offen)}</h2>`;
+    $("reiter").innerHTML = "";
+    $("detail-inhalt").innerHTML = fehlerKarte("Nicht abrufbar", d.grund || "");
+    $("detail-fuss").innerHTML = App.frische(d.stand, { schwelleMin: SCHWELLE_MIN });
+    return;
+  }
+  const r = d.repo;
+  satz(d.satz, r.ci.ampel === "rot" ? "schlecht" : r.ci.ampel === "gelb" ? "warn" : r.ci.ampel === "gruen" ? "gut" : "");
+  $("detail-kopf").innerHTML = `<h2>${punkt(r.ci.ampel, ciTitel(r.ci))}<span>${esc(r.name)}</span>${marke(r.standardzweig, "", "git-branch")}${sichtbarkeit(r)}</h2>`
+    + (r.beschreibung ? `<p>${esc(r.beschreibung)}</p>` : "")
+    + App.knoepfe([
+      r.url ? { text: "In Gitea öffnen", symbol: "square-arrow-out-up-right", klasse: "zweit klein", aktion: "gitea", attr: { "data-url": r.url } } : null,
+      r.ci.url ? { text: r.ci.text + (r.ci.fehlgeschlagen.length ? ": " + r.ci.fehlgeschlagen[0] : ""), symbol: r.ci.ampel === "rot" ? "circle-x" : "workflow", klasse: "leise klein", aktion: "gitea", attr: { "data-url": r.ci.url } } : null,
+    ], { label: "Links" });
+  const anzahl = { commits: d.commits.length, laeufe: d.laeufe.length, zweige: d.zweige_gesamt, prs: d.prs.length, pakete: d.pakete.length + d.bilder.length };
+  $("reiter").innerHTML = REITER.map(([id, titel]) => `<button type="button" role="tab" aria-selected="${id === reiter}" data-aktion="reiter" data-reiter="${id}">`
+    + `${esc(titel)}${anzahl[id] ? `<span class="tab-zahl">${esc(String(anzahl[id]))}</span>` : ""}</button>`).join("");
+  const inhalt = { commits: inhaltCommits, laeufe: inhaltLaeufe, zweige: inhaltZweige, prs: inhaltPrs, pakete: inhaltPakete }[reiter] || inhaltCommits;
+  $("detail-inhalt").innerHTML = inhalt(d);
+  $("detail-fuss").innerHTML = App.frische(d.stand, { schwelleMin: SCHWELLE_MIN })
+    + (d.fehlt ? `<span class="mut">${esc("Nicht lesbar: " + Object.keys(d.fehlt).join(", "))}</span>` : "");
+}
+
+async function oeffnen(name) {
+  if (!name) return;
+  offen = name;
+  zeigeAnsicht();
+  const alt = details.get(name);
+  if (alt) zeichneDetail(alt);
+  else {
+    $("detail-kopf").innerHTML = `<h2>${esc(name)}</h2>`;
+    $("reiter").innerHTML = "";
+    $("detail-inhalt").innerHTML = '<div class="laedt">Lädt …</div>';
+    $("detail-fuss").innerHTML = "";
+  }
+  $("neu").disabled = true;
+  try {
+    const d = await rufen("detail", { repo: name });
+    if (d && d.quelle_ok === false && alt && alt.quelle_ok) { if (offen === name) satz("Aktualisieren hat nicht geklappt: " + (d.grund || ""), "schlecht"); return; }
+    details.set(name, d);
+    if (offen === name) zeichneDetail(d);
+  } catch (e) {
+    if (offen !== name) return;
+    if (alt && alt.quelle_ok) satz("Aktualisieren hat nicht geklappt: " + App.fehlertext(e), "schlecht");
+    else $("detail-inhalt").innerHTML = fehlerKarte("Nicht abrufbar", App.fehlertext(e));
+  } finally { $("neu").disabled = false; }
+}
+
+function zurueck() {
+  offen = null;
+  zeigeAnsicht();
+  if (liste) zeichneListe(); else laden();
+}
+
+// Links nach Gitea: im OS über den Host (öffnet einen Tab), sonst direkt
+async function linkOeffnen(url) {
+  if (!url) return;
+  try { await App.anfrage("ui/open-link", { url }); } catch { try { window.open(url, "_blank", "noopener"); } catch {} }
+}
+
+// ── Ereignisse ──────────────────────────────────────────────────────────
+App.bei("oeffnen", (el) => oeffnen(el.dataset.repo));
+App.bei("reiter", (el) => { reiter = el.dataset.reiter || "commits"; const d = details.get(offen); if (d) zeichneDetail(d); });
+App.bei("gitea", (el) => linkOeffnen(el.dataset.url));
+$("zurueck").addEventListener("click", zurueck);
+$("neu").addEventListener("click", () => (offen ? oeffnen(offen) : laden()));
+$("suche").addEventListener("input", zeichneListe);
+$("probleme").addEventListener("click", () => { $("probleme").setAttribute("aria-pressed", String(!filterAn())); zeichneListe(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && offen) zurueck(); });
+window.addEventListener("app-stufe", () => (offen ? zeichneDetail(details.get(offen)) : zeichneListe()));
+
+// Öffnet der Host die App mit einem Werkzeugergebnis (Shell, Chat), kommt es hier an: Übersicht oder Detail.
+App.auf("ui/notifications/tool-result", (r) => {
+  const d = App.daten(r);
+  if (!d) return;
+  if (Array.isArray(d.repos) || (d.quelle_ok === false && !d.repo)) { bekommen = true; uebernehmeListe(d); }
+  else if (d.repo && d.repo.name) {
+    bekommen = true; details.set(d.repo.name, d); offen = d.repo.name; zeigeAnsicht(); zeichneDetail(d);
+  }
+});
+// Kam nach dem Start nichts von außen, die Übersicht selbst holen; danach jede Minute neu, solange die App zu sehen ist.
+App.start("fyos-repos").then(() => {
+  setTimeout(() => { if (!bekommen) laden(); }, 1500);
+  App.takt(60000, () => (offen ? oeffnen(offen) : laden()));
+}).catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+# Prozesskarte — Vorlage für kuratierte Ketten (Lanes), Kanten, synthetische Knoten und Aliase.
+#
+# Gelesen vom Werkzeug betrieb.prozesskarte. Eigene Ketten: diese Datei kopieren, anpassen und mit
+# FYOS_PROZESSKARTE_LANES auf die Kopie zeigen (zum Beispiel aus einer ConfigMap eingehängt). Ohne die Einstellung
+# gilt diese Vorlage mit erfundenen Namen.
+#
+# Der Katalog der Automatismen (FYOS_BETRIEB_AUTOMATISMEN_CONFIGMAP oder docs/automatismen-katalog.yaml im Klon
+# FYOS_REPO_PATH) beschreibt Einträge, keine Graph-Layouts. Diese Datei referenziert nur Katalog-Namen; fehlt ein
+# Name im Katalog, fällt der Knoten still aus der Karte und der Katalog-Eintrag erscheint unter `nicht_zugeordnet`.
+# Deshalb Katalog und diese Datei gemeinsam ändern.
+#
+#   lanes[].columns  Spalten von links nach rechts (Katalog-Namen oder synth-Schlüssel)
+#   lanes[].edges    [von, auf] — Grundlage von betrieb.betroffen (ebene=automatik)
+#   synth            Quellen/Senken ohne Katalog-Eintrag (Schlüssel beginnen mit _)
+#   alias            Kurzname in der Karte -> exakter Katalog-Schlüssel
+lanes:
+- id: backup
+  titel: Backups
+  sub: Erzeuger → Prüfer → Offsite
+  kategorie: backup
+  columns:
+  - [datenbank-dump, volumen-sicherung]
+  - [backup-pruefer]
+  - [offsite-kopie]
+  edges:
+  - [datenbank-dump, backup-pruefer]
+  - [volumen-sicherung, backup-pruefer]
+  - [backup-pruefer, offsite-kopie]
+- id: waechter
+  titel: Wächter
+  sub: beobachten, heilen, melden
+  kategorie: guardian
+  columns:
+  - [knoten-waechter-a, knoten-waechter-b]
+  - [speicher-waechter]
+  - [_meldung]
+  edges:
+  - [knoten-waechter-a, _meldung]
+  - [knoten-waechter-b, _meldung]
+  - [speicher-waechter, _meldung]
+- id: cicd
+  titel: Bau und Rollout
+  sub: push → CI → Registry → Rollout
+  kategorie: ops
+  columns:
+  - [_push]
+  - [ci-waechter]
+  - [_registry]
+  - [_meldung]
+  edges:
+  - [_push, ci-waechter]
+  - [ci-waechter, _registry]
+  - [_registry, _meldung]
+synth:
+  _meldung:
+    name: Meldung
+    kurz: Vorgang · Benachrichtigung
+    hinweis: 'Senke: Wächter melden hier'
+  _push:
+    name: git push
+    kurz: Menschen und Agenten
+    hinweis: 'Quelle: Commit landet im Repo'
+  _registry:
+    name: Registry
+    kurz: Bilder-Registry
+    hinweis: 'Synthetisch: Bildautomatik'
+alias: {}

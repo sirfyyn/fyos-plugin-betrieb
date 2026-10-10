@@ -1,0 +1,96 @@
+# Beispiel für die Quelle `rechner` des Betriebsgraphen: Wissen über Rechner und Dienste ohne Kubernetes, das sich nicht
+# aus dem Cluster lesen lässt. Alle Namen und Adressen hier sind erfunden (Adressen aus dem Bereich für Beispiele).
+#
+# So wird die Datei benutzt: Kopie anlegen, an die eigene Umgebung anpassen und im Einspeiser (CronJob oder von Hand)
+# mit der Umgebungsvariablen GRAPH_RECHNER_DATEN auf ihren Pfad zeigen. Ohne die Variable ist die Quelle aus.
+# Gelesen wird sie von den Quellen `rechner` (alles), `caddy` (`adressen`, `extern`, `dienste` mit `port`) und
+# `experimente` (`artefakte`, `profile`).
+#
+# Regeln
+#   - Jeder Eintrag nennt einen `beleg`: woher das Wissen stammt (Doku, Unit-Datei, Betriebsprotokoll). Was sich lesen
+#     lässt (Cluster, Caddyfile), steht nicht hier; die Datei ändert sich selten, und der Graph hält jede Änderung fest.
+#   - IDs haben die Form <typ>:<name>. Rechner, die auch Clusterknoten sind, heißen knoten:<Knotenname> und gehören
+#     der Quelle k8s; diese Datei verweist nur auf sie.
+version: 1
+
+# Der Rechner, auf dem die Dienste laufen, wenn ein Eintrag keinen eigenen `rechner` nennt.
+standard_rechner: knoten:werkbank
+
+# Host-Adresse -> Rechner (für Caddy-Upstreams wie http://192.0.2.10:8080)
+adressen:
+  192.0.2.10: knoten:werkbank
+  192.0.2.11: knoten:speicherbox
+
+# Geräte außerhalb des Clusters, die eine Caddy-Route anfährt
+extern:
+  192.0.2.50:
+    id: extern:haussteuerung
+    name: Haussteuerung
+    beleg: Caddyfile (reverse_proxy http://192.0.2.50:8123)
+
+# Dienste auf Rechnern (systemd, Docker, ...), nicht in Kubernetes.
+#   rechner               Rechner, auf dem der Dienst läuft (sonst standard_rechner)
+#   braucht               andere IDs, ohne die er nicht läuft
+#   rechner_haengt_dran   true = der Rechner braucht diesen Dienst (z. B. der Kubernetes-Agent eines Knotens)
+dienste:
+  - id: rechner:k8s-agent
+    name: k3s-agent
+    was: Kubernetes-Agent der Werkbank; fällt er aus, ist der Knoten NotReady und alles darauf weg
+    beleg: Betriebshandbuch, Abschnitt Knoten
+    rechner_haengt_dran: true
+  - id: rechner:modellserver
+    name: modellserver.service
+    port: 8080
+    was: Server für das lokale Sprachmodell
+    beleg: /etc/systemd/system/modellserver.service
+  - id: rechner:modelltor
+    name: modelltor.service
+    port: 8081
+    braucht: [rechner:modellserver]
+    was: Tor vor dem Modellserver (Warteschlange, Anmeldung); Anfragen gehen hierüber
+    beleg: /etc/systemd/system/modelltor.service
+
+# Speicherorte auf Rechnern
+speicher:
+  - id: speicher:werkbank/modelle
+    name: /srv/modelle
+    was: Modelldateien
+    beleg: Betriebshandbuch, Abschnitt Speicher
+  - id: speicher:speicherbox/messungen
+    name: /tank/messungen
+    rechner: knoten:speicherbox
+    was: Messdaten
+    beleg: Betriebshandbuch, Abschnitt Speicher
+
+# Artefakte: Dateien, die Dienste laden und Experimente messen (z. B. Modelldateien in einer Quantisierung).
+# `experimente: false` nimmt ein Artefakt aus der Namenssuche in den Experimenten heraus.
+artefakte:
+  - id: artefakt:basis-q4
+    name: Basismodell Q4
+    datei: /srv/modelle/basis-q4.gguf
+    speicher: speicher:werkbank/modelle
+    beleg: Betriebshandbuch, Abschnitt Modelle
+  - id: artefakt:basis-q8
+    name: Basismodell Q8
+    datei: /srv/modelle/basis-q8.gguf
+    speicher: speicher:werkbank/modelle
+    beleg: Betriebshandbuch, Abschnitt Modelle
+
+# Profile: gesicherte Sätze von Einstellungen eines Dienstes. `laedt` nennt die Artefakte, die ein Profil einbindet,
+# `beschreibt` den Dienst, den es einstellt. Nur eintragen, was belegt ist.
+profile:
+  - id: profil:standard
+    was: Basismodell Q4 mit zwei Plätzen
+    laedt: [artefakt:basis-q4]
+    beschreibt: rechner:modellserver
+    beleg: Betriebshandbuch, Abschnitt Profile
+  - id: profil:genau
+    was: Basismodell Q8, ein Platz
+    laedt: [artefakt:basis-q8]
+    beschreibt: rechner:modellserver
+    beleg: Betriebshandbuch, Abschnitt Profile
+
+# Querverbindungen, die kein Cluster-Objekt trägt: `von` braucht/nutzt `nach`; `art` ist eine Kantenart des Graphen
+# (braucht, nutzt, ...). Die Kante entsteht nur, wenn `von` im Graphen bekannt ist.
+querverbindungen:
+  - {von: "plugin:modell", nach: "rechner:modelltor", art: nutzt, beleg: "Plugin-Konfiguration (Tor-Adresse)"}

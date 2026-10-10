@@ -1,0 +1,111 @@
+# Betriebsgraph einspeisen: ein CronJob, der alle 30 Minuten die Quellen liest und mit der Graph-Datenbank abgleicht.
+#
+# BEISPIEL, kein fertiges Manifest. Vor dem Anwenden die Platzhalter in spitzen Klammern ersetzen:
+#
+#   <NAMESPACE>        Namensraum, in dem der Einspeiser läuft (dort liegt auch das Secret)
+#   <IMAGE>            ein Bild mit installiertem `fyos-plugin-betrieb[graph]`, zum Beispiel das Bild des Hubs, wenn es den
+#                      Extra `graph` enthält (psycopg); der Befehl `fyos-graph-einspeisen` muss im Bild liegen
+#   <GRAPH_DB_SECRET>  Name des Secrets mit den beiden Datenbank-Adressen (Schlüssel `url_einspeiser` und `url_lesen`);
+#                      das Secret legt der Betreiber selbst an, siehe README, Abschnitt „Betriebsgraph einrichten"
+#
+# Der Einspeiser liest nur: die Kubernetes-API (rbac.yaml, ohne Secrets) und, was unten als Umgebung eingerichtet wird.
+# Er schreibt nur in die Graph-Datenbank. Eine Quelle ohne Einrichtung ist „aus": kein Fehler, kein Eintrag in `laeufe`.
+# Idempotent: gleicher Stand = keine Änderung; Änderungen schließen die alte Zeile und legen eine neue an (Historie).
+# Fällt eine Quelle aus, bleibt ihr alter Stand stehen und die anderen laufen weiter (Tabelle `laeufe`).
+# Rückweg: `suspend: true` setzt den Lauf aus, den CronJob zu löschen entfernt ihn; die Daten bleiben in der Datenbank.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: graph-einspeisen
+  namespace: <NAMESPACE>
+  labels:
+    app.kubernetes.io/name: graph-einspeisen
+spec:
+  schedule: "7,37 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 0
+      # Die Frist verhindert, dass ein hängender Lauf wegen `Forbid` alle weiteren blockiert. Am längsten braucht die
+      # Quelle itsm, wenn der Vorgangs-Dienst die Beschreibungen nur einzeln hergibt; bei sehr vielen offenen Vorgängen
+      # die Frist erhöhen.
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app: graph-einspeisen # Ziel der Netzregeln in networkpolicy.yaml
+        spec:
+          restartPolicy: Never
+          serviceAccountName: graph-einspeisen
+          automountServiceAccountToken: true # die Kubernetes-API wird gelesen
+          # imagePullSecrets:
+          #   - name: <REGISTRY_SECRET>   # wenn das Bild aus einer privaten Registry kommt
+          containers:
+            - name: einspeisen
+              image: <IMAGE>
+              command: ["fyos-graph-einspeisen"]
+              # Nur bestimmte Quellen: args: ["--quellen", "k8s,flux"]   (oder die Umgebung GRAPH_QUELLEN)
+              # Nur zählen, nichts schreiben: args: ["--trocken"]
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+                - name: GRAPH_DB_URL # Adresse mit dem Passwort des Schreibers: nur aus dem Secret, nie im Manifest
+                  valueFrom:
+                    secretKeyRef: {name: <GRAPH_DB_SECRET>, key: url_einspeiser}
+                # ── Quellen einrichten. Jede Quelle, die hier nichts findet, ist aus. Alle Variablen: README. ──
+                #
+                # rechner: Rechner und Dienste ohne Kubernetes, kuratiert aus einer Datei (Vorlage:
+                # fyos_plugin_betrieb/daten/rechner.beispiel.yaml). Die Datei kommt zum Beispiel aus einer ConfigMap
+                # (siehe volumes unten). Die Quellen caddy und experimente lesen dieselbe Datei mit.
+                # - {name: GRAPH_RECHNER_DATEN, value: /etc/graph/rechner.yaml}
+                #
+                # caddy: das Caddyfile aus einer ConfigMap im Cluster oder aus einer Datei.
+                # - {name: GRAPH_CADDY_CONFIGMAP, value: "<namespace>/<name>"}      # Schlüssel: GRAPH_CADDY_SCHLUESSEL (Vorgabe Caddyfile)
+                # - {name: GRAPH_CADDYFILE, value: /etc/graph/Caddyfile}
+                # - {name: GRAPH_CADDY_DIENST, value: "dienst:<namespace>/<caddy>"} # Graph-ID des Caddy-Dienstes (braucht-Kanten)
+                # - {name: GRAPH_CADDY_AUTH, value: "service:<namespace>/<sso>"}    # Graph-ID des Anmeldedienstes
+                #
+                # hub: Plugins des MCP-Hubs. Entry-Points der Umgebung des Einspeisers gelten immer; die Konfiguration
+                # des Hubs ist optional (nennt abgeschaltete Plugins und Adressen in ihrer Konfiguration).
+                # - {name: GRAPH_HUB_CONFIGMAP, value: "<namespace>/<name>"}        # Schlüssel: GRAPH_HUB_CONFIG_SCHLUESSEL (Vorgabe config.yaml)
+                # - {name: GRAPH_HUB_DIENST, value: "dienst:<namespace>/<hub>"}     # Graph-ID des Hub-Dienstes (braucht-Kanten)
+                #
+                # bestand: Momentaufnahme des Bestandsbuchs in Redis (nur wenn ein Bestandsbuch-Plugin sie schreibt).
+                # - {name: GRAPH_BESTAND_REDIS_URL, value: "redis://<redis>.<namespace>.svc.cluster.local:6379"}
+                #
+                # experimente: Steckbriefe der Experiment-App (Dateien <id>.json in einem Verzeichnis).
+                # - {name: EXPERIMENTE_DIR, value: /daten/experimente}
+                #
+                # itsm: offene Vorgänge. Aus dem CronJob erreichbar ist nur ein Vorgangs-Dienst (HTTP); das Workboard
+                # eines Agenten lebt im Prozess des Hubs.
+                # - {name: FYOS_VORGAENGE_URL, value: "http://<vorgaenge>.<namespace>.svc.cluster.local"}
+                # - name: FYOS_VORGAENGE_KOPF            # "Name: Wert", wenn der Dienst eine Kopfzeile verlangt
+                #   valueFrom:
+                #     secretKeyRef: {name: <VORGAENGE_SECRET>, key: kopf}
+                # Triage-Kommentare an neue INCs ("[graph] Betroffen laut Text ..."): aus, solange nicht eingeschaltet.
+                # - {name: GRAPH_ITSM_KOMMENTARE, value: "1"}
+                # - {name: GRAPH_ITSM_AKTEUR, value: graph}                          # Name, unter dem kommentiert wird (Vorgabe api)
+                #
+                # Textfunde in Vorgängen und Experimenten: Namen, die in jedem Text vorkommen, nicht als Fund zählen.
+                # - {name: GRAPH_TEXT_SPERRE, value: "name1,name2"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+                # runAsNonRoot: true # einschalten, wenn das Bild einen unprivilegierten Nutzer hat
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                # - {name: graph-daten, mountPath: /etc/graph, readOnly: true}
+              resources:
+                requests: {memory: "192Mi", cpu: "50m"}
+                limits: {memory: "768Mi", cpu: "1"}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            # Dateien der Quellen rechner und caddy aus einer ConfigMap (kubectl create configmap graph-daten --from-file=...):
+            # - name: graph-daten
+            #   configMap: {name: graph-daten}

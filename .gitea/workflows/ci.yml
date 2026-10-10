@@ -1,0 +1,64 @@
+# Tests bei jedem Pull Request und auf main; auf main das Paket in die Paket-Registry (PyPI-API des Git-Servers).
+# Repo-Variablen: FYOS_RUNNER (Runner-Etikett), FYOS_REGISTRY (z. B. registry.example.com/org).
+# Anmeldung am Paketindex: Secrets REGISTRY_USER/REGISTRY_TOKEN (Token mit write:package; Gitea gibt dem
+# Laufzeit-Token GITEA_TOKEN keine Paketrechte). Fehlen sie, versucht der Lauf das Laufzeit-Token (packages: write).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Laufend getestet (Entscheidungsbuch Nr. 144): täglich gegen die neuesten Pakete aus dem
+  # Index, auch ohne Commit. Rot meldet die Erkunden-Schleife als Vorgang (Bereich dist).
+  schedule:
+    - cron: "19 5 * * *"
+
+# Je Commit genau ein Lauf: Zweige prüft der PR-Lauf, main der Push-Lauf. Zwei Läufe desselben Commits teilten sich
+# sonst den Arbeitsordner des Runners (fyos-os, Lauf #34).
+concurrency:
+  group: ${{ gitea.workflow }}-${{ gitea.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pruefen:
+    runs-on: ${{ vars.FYOS_RUNNER }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests gegen fyos-hub und die Plugin-Pakete aus der Paket-Registry
+        run: |
+          host="${FYOS_REGISTRY%%/*}"; besitzer="${FYOS_REGISTRY#*/}"
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install -q --pre \
+            --extra-index-url "https://${REGISTRY_USER}:${REGISTRY_TOKEN}@${host}/api/packages/${besitzer}/pypi/simple" \
+            -e ".[test]"
+          /tmp/venv/bin/python -P -m pytest tests -q
+        env:
+          FYOS_REGISTRY: ${{ vars.FYOS_REGISTRY }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER || gitea.actor }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN || secrets.GITEA_TOKEN }}
+
+  paket:
+    needs: pruefen
+    if: gitea.ref == 'refs/heads/main' && gitea.event_name == 'push'
+    runs-on: ${{ vars.FYOS_RUNNER }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bauen und hochladen
+        run: |
+          python3 -m venv /tmp/paket
+          /tmp/paket/bin/pip install -q build twine
+          basis="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          sed -i "s/^version = \".*\"/version = \"${basis}.dev${{ gitea.run_number }}\"/" pyproject.toml
+          /tmp/paket/bin/python -m build --wheel --sdist
+          host="${FYOS_REGISTRY%%/*}"; besitzer="${FYOS_REGISTRY#*/}"
+          /tmp/paket/bin/twine upload --non-interactive \
+            --repository-url "https://${host}/api/packages/${besitzer}/pypi" \
+            -u "$REGISTRY_USER" -p "$REGISTRY_TOKEN" dist/*
+        env:
+          FYOS_REGISTRY: ${{ vars.FYOS_REGISTRY }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER || gitea.actor }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN || secrets.GITEA_TOKEN }}
